@@ -1,17 +1,17 @@
 ---
 repos:
   - repo: https://github.com/python/black
-    rev: 22.3.0
+    rev: 25.1.0
     hooks:
       - id: black
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.4.1
     hooks:
       - id: codespell
         args:
           - --ignore-words-list=nd,reacher,thist,ths, ure, referenc
-  - repo: https://gitlab.com/PyCQA/flake8
-    rev: 4.0.1
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.3.0
     hooks:
       - id: flake8
         args:
@@ -22,12 +22,12 @@ repos:
           - --show-source
           - --statistics
   - repo: https://github.com/PyCQA/isort
-    rev: 5.10.1
+    rev: 6.0.1
     hooks:
       - id: isort
         args: ["--profile", "black"]
   - repo: https://github.com/pycqa/pydocstyle
-    rev: 6.1.1  # pick a git hash / tag to point to
+    rev: 6.3.0  # pick a git hash / tag to point to
     hooks:
       - id: pydocstyle
         exclude: ^(gym/version.py)|(gym/envs/)|(tests/)
@@ -37,7 +37,7 @@ repos:
           - --convention=google
         additional_dependencies: ["toml"]
   - repo: https://github.com/asottile/pyupgrade
-    rev: v2.32.0
+    rev: v3.20.0
     hooks:
       - id: pyupgrade
         # TODO: remove `--keep-runtime-typing` option
