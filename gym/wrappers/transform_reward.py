@@ -1,4 +1,5 @@
 """Wrapper for transforming the reward."""
+
 from typing import Callable
 
 import gym

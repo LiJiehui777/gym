@@ -1,4 +1,5 @@
 """Implementation of a space that represents the cartesian product of other spaces."""
+
 from collections.abc import Sequence as CollectionSequence
 from typing import Iterable, Optional
 from typing import Sequence as TypingSequence

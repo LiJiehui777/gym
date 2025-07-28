@@ -89,6 +89,12 @@ register(
     reward_threshold=900,
 )
 
+register(
+    id="GoldRush-v0",
+    entry_point="gym.envs.box2d.gold_rush:GoldRush",
+    max_episode_steps=300,
+)
+
 # Toy Text
 # ----------------------------------------
 

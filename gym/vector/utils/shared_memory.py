@@ -1,4 +1,5 @@
 """Utility functions for vector environments to share memory between processes."""
+
 import multiprocessing as mp
 from collections import OrderedDict
 from ctypes import c_bool

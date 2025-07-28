@@ -1,4 +1,5 @@
 """Numpy utility functions: concatenate space samples and create empty array."""
+
 from collections import OrderedDict
 from functools import singledispatch
 from typing import Iterable, Union

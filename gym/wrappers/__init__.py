@@ -1,4 +1,5 @@
 """Module of wrapper classes."""
+
 from gym import error
 from gym.wrappers.atari_preprocessing import AtariPreprocessing
 from gym.wrappers.autoreset import AutoResetWrapper

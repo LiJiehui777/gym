@@ -1,4 +1,5 @@
 """Core API for Environment, Wrapper, ActionWrapper, RewardWrapper and ObservationWrapper."""
+
 import sys
 from typing import (
     TYPE_CHECKING,

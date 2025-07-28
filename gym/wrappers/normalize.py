@@ -1,4 +1,5 @@
 """Set of wrappers for normalizing actions and observations."""
+
 import numpy as np
 
 import gym

@@ -1,4 +1,5 @@
 """Set of random number generator functions: seeding, generator, hashing seeds."""
+
 from typing import Any, Optional, Tuple
 
 import numpy as np

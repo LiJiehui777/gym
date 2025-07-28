@@ -1,4 +1,5 @@
 """Utility functions for gym spaces: batch space and iterator."""
+
 from collections import OrderedDict
 from copy import deepcopy
 from functools import singledispatch

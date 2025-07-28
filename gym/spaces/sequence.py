@@ -1,4 +1,5 @@
 """Implementation of a space that represents finite-length sequences."""
+
 from collections.abc import Sequence as CollectionSequence
 from typing import Any, List, Optional, Tuple, Union
 

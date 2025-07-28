@@ -1,4 +1,5 @@
 """Tests the gym.wrapper.AutoResetWrapper operates as expected."""
+
 from typing import Generator, Optional
 from unittest.mock import MagicMock
 

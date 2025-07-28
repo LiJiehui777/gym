@@ -1,4 +1,5 @@
 """Utility functions to save rendering videos."""
+
 import os
 from typing import Callable, Optional
 

@@ -1,4 +1,5 @@
 """Implementation of a space that consists of binary np.ndarrays of a fixed shape."""
+
 from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np

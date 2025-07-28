@@ -1,4 +1,5 @@
 """Implementation of a space that represents graph information where nodes and edges can be represented with euclidean space."""
+
 from typing import NamedTuple, Optional, Sequence, Tuple, Union
 
 import numpy as np

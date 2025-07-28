@@ -1,4 +1,5 @@
 """Setups the project."""
+
 import itertools
 import re
 

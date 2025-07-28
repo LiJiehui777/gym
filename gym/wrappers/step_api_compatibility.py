@@ -1,4 +1,5 @@
 """Implementation of StepAPICompatibility wrapper class for transforming envs between new and old step API."""
+
 import gym
 from gym.logger import deprecation
 from gym.utils.step_api_compatibility import (

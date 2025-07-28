@@ -1,4 +1,5 @@
 """Wrapper for transforming observations."""
+
 from typing import Any, Callable
 
 import gym

@@ -1,4 +1,5 @@
 """Tests for the pixel observation wrapper."""
+
 from typing import Optional
 
 import numpy as np

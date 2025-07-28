@@ -1,4 +1,5 @@
 """Implementation of a space that represents textual strings."""
+
 from typing import Any, Dict, FrozenSet, Optional, Set, Tuple, Union
 
 import numpy as np

@@ -1,4 +1,5 @@
 """Implementation of a space that represents closed boxes in euclidean space."""
+
 from typing import Dict, List, Optional, Sequence, SupportsFloat, Tuple, Type, Union
 
 import numpy as np

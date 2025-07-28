@@ -408,9 +408,7 @@ class MujocoEnv(BaseMujocoEnv):
             self.viewer.close()
         super().close()
 
-    def _get_viewer(
-        self, mode
-    ) -> Union[
+    def _get_viewer(self, mode) -> Union[
         "gym.envs.mujoco.mujoco_rendering.Viewer",
         "gym.envs.mujoco.mujoco_rendering.RenderContextOffscreen",
     ]:

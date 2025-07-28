@@ -1,4 +1,5 @@
 """Implementation of a space that represents the cartesian product of other spaces as a dictionary."""
+
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from typing import Any

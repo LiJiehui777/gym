@@ -1,4 +1,5 @@
 """A compatibility wrapper converting an old-style environment into a valid environment."""
+
 import sys
 from typing import Any, Dict, Optional, Tuple
 

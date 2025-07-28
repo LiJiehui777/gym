@@ -1,4 +1,5 @@
 """Implementation of a space that represents the cartesian product of `Discrete` spaces."""
+
 from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np

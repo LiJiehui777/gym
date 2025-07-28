@@ -1,4 +1,5 @@
 """classic Acrobot task"""
+
 from typing import Optional
 
 import numpy as np
@@ -249,12 +250,7 @@ class AcrobotEnv(core.Env):
         theta2 = s[1]
         dtheta1 = s[2]
         dtheta2 = s[3]
-        d1 = (
-            m1 * lc1**2
-            + m2 * (l1**2 + lc2**2 + 2 * l1 * lc2 * cos(theta2))
-            + I1
-            + I2
-        )
+        d1 = m1 * lc1**2 + m2 * (l1**2 + lc2**2 + 2 * l1 * lc2 * cos(theta2)) + I1 + I2
         d2 = m2 * (lc2**2 + l1 * lc2 * cos(theta2)) + I2
         phi2 = m2 * lc2 * g * cos(theta1 + theta2 - pi / 2.0)
         phi1 = (
@@ -337,7 +333,7 @@ class AcrobotEnv(core.Env):
             color=(0, 0, 0),
         )
 
-        for ((x, y), th, llen) in zip(xys, thetas, link_lengths):
+        for (x, y), th, llen in zip(xys, thetas, link_lengths):
             x = x + offset
             y = y + offset
             l, r, t, b = 0, llen, 0.1 * scale, -0.1 * scale

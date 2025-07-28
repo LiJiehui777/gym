@@ -1,4 +1,5 @@
 """A passive environment checker wrapper for an environment's observation and action space along with the reset, step and render functions."""
+
 import gym
 from gym.core import ActType
 from gym.utils.passive_env_checker import (

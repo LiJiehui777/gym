@@ -1,4 +1,5 @@
 """A synchronous vector environment."""
+
 from copy import deepcopy
 from typing import Any, Callable, Iterator, List, Optional, Sequence, Union
 

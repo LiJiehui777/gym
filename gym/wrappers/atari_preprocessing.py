@@ -1,4 +1,5 @@
 """Implementation of Atari 2600 Preprocessing following the guidelines of Machado et al., 2018."""
+
 import numpy as np
 
 import gym

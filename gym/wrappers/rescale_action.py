@@ -1,4 +1,5 @@
 """Wrapper for rescaling actions to within a max and min action."""
+
 from typing import Union
 
 import numpy as np

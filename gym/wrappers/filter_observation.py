@@ -1,4 +1,5 @@
 """A wrapper for filtering dictionary observations by their keys."""
+
 import copy
 from typing import Sequence
 

@@ -1,4 +1,5 @@
 """Wrapper for augmenting observations by pixel values."""
+
 import collections
 import copy
 from collections.abc import MutableMapping

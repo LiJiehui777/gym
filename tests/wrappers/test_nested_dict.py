@@ -1,4 +1,5 @@
 """Tests for the filter observation wrapper."""
+
 from typing import Optional
 
 import numpy as np

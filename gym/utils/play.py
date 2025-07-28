@@ -1,4 +1,5 @@
 """Utilities of visualising an environment."""
+
 from collections import deque
 from typing import Callable, Dict, List, Optional, Tuple, Union
 

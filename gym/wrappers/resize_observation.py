@@ -1,4 +1,5 @@
 """Wrapper for resizing observations."""
+
 from typing import Union
 
 import numpy as np

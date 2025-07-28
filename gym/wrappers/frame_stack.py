@@ -1,4 +1,5 @@
 """Wrapper that stacks frames."""
+
 from collections import deque
 from typing import Union
 

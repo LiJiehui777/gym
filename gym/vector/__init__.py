@@ -1,4 +1,5 @@
 """Module for vector environments."""
+
 from typing import Iterable, List, Optional, Union
 
 import gym

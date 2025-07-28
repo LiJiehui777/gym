@@ -8,6 +8,7 @@ are vectors in the two-dimensional unit cube, the environment code may contain t
     self.action_space = spaces.Discrete(3)
     self.observation_space = spaces.Box(0, 1, shape=(2,))
 """
+
 from gym.spaces.box import Box
 from gym.spaces.dict import Dict
 from gym.spaces.discrete import Discrete

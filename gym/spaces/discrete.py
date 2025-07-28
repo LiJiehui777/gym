@@ -1,4 +1,5 @@
 """Implementation of a space consisting of finitely many elements."""
+
 from typing import Optional, Union
 
 import numpy as np
