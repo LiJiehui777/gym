@@ -9,6 +9,8 @@ import pygame
 import gym
 from gym import spaces
 
+# 目前主要地图有两个，在单场比赛中，障碍物的位置不变，炸弹和金币的数量和位置会改变。
+# 其中 0表示非障碍物，-1表示障碍物。
 mazes = {
     "maze1": [
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -50,6 +52,7 @@ mazes = {
     ],
 }
 
+# 每 20 轮，npc 会在固定位置掉落一定数量的金币，金币的数量可能是3、6等，暂时使用固定值3，后续会更新。
 npc_coin_positions = {
     "maze1": [
         (0, 5),
@@ -131,7 +134,7 @@ npc_coin_positions = {
     ],
 }
 
-# Pygame constants.
+# 可视化部分的代码。
 GRID_OFFSET_X = 50
 GRID_OFFSET_Y = 50
 GRID_CELL_SIZE = 40
@@ -142,11 +145,21 @@ COIN_COLOR = (255, 215, 0)  # Gold
 class GoldRush(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 50}
 
-    def __init__(self, maze: str = "maze1", render_mode: str = "human"):
+    def __init__(
+        self, maze: str = "maze1", max_rounds: int = 900, render_mode: str = "human"
+    ):
+        # 游戏会进行的最大回合数，因为这个环境每轮执行一个动作，因此应该设置成 900 个回合
+        self.max_rounds = max_rounds + 1
         self.maze_type = maze
         self.maze = copy.deepcopy(mazes[maze])
         self.npc_coin_pos = npc_coin_positions[maze]
+
+        # 动作空间可看作一个 tuple(int, int)，第一个值是 player1 的动作，第二个值是 player2 的动作，
+        # 0: 上，1: 下，2: 左，3: 右，4: 不动。
         self.action_space = spaces.MultiDiscrete([5, 5])
+
+        # 状态空间是 grid,两个玩家的位置和金币数。
+        # 在使用的时候，需要根据是哪个玩家先将该玩家对应的位置由 -2 改成 -9，然后再传入 MoveDecision() 决策。
         self.observation_space = spaces.Tuple(
             (
                 spaces.Box(low=-9, high=500, shape=(17 * 17,), dtype=np.int32),
@@ -160,16 +173,28 @@ class GoldRush(gym.Env):
             )
         )
 
+        # 两个玩家各自的位置， [player1, player2]
         self.agent_positions: List[Tuple[int, int]] = [(0, 0), (16, 16)]
-        self.golds: list[int] = [0, 0]
-        self.coins: Dict[Tuple[int, int], int] = dict()
-        self.bombs: Set[Tuple[int, int]] = set()
-        self.penalty = 0.3
 
+        self.golds: list[int] = [0, 0]  # 表示两个各自玩家的金币数 [player1, player2]
+
+        # 表示地图中所有的金币位置和数值
+        self.coins: Dict[Tuple[int, int], int] = dict()
+
+        # 表示地图中所有炸弹的位置
+        self.bombs: Set[Tuple[int, int]] = set()
+
+        # 吃到炸弹后会损失的金币的比例，目前观测是 0.1，但是具体的值需要到初赛时才会公布。
+        self.penalty = 0.1
+
+        self.round = 1  # 当前是第几回合
+        self.turn = 0  # 当前是哪个玩家，0: player1, 1: player2
+
+        # 可视化相关的代码
         self.screen: Optional[pygame.Surface] = None
-        self.clock = None
-        self.render_mode = render_mode
-        # Load images.
+        self.render_mode = render_mode  # gym 框架需要的成员变量
+
+        # 导入地图中的图片
         image_folder = Path(__file__).parent.parent.joinpath("toy_text", "img")
         self.box_image = pygame.image.load(image_folder.joinpath("box.png"))
         self.box_image = pygame.transform.smoothscale(
@@ -188,15 +213,15 @@ class GoldRush(gym.Env):
             self.player2_image, (GRID_CELL_SIZE - 1, GRID_CELL_SIZE - 1)
         )
 
-        self.round = 1
-        self.turn = 0
-
     def reset(
         self,
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ):
+        """
+        重置环境
+        """
         self.agent_positions = [(0, 0), (16, 16)]
         self.golds = [0, 0]
         self.coins = {}
@@ -209,32 +234,46 @@ class GoldRush(gym.Env):
         return self._get_obs(), {}
 
     def step(self, action: Tuple[int, int]):
+        """
+        这个函数只会执行一个玩家的动作，action 的第一个变量表示是哪个玩家,0: player1, 1:player2，
+        第二个变量表示具体的动作，范围是 [0, 4]，具体含义和游戏规则一样
+        """
         agent_id, move = action
-        # Update the maze.
+
+        # 更新地图
         if self.turn == 0:
             if self.round % 20 == 1:
+                # 每20个回合会有 npc 随机掉落金币
                 self._flush_npc()
             self.round += 1
+
+            # 在每个回合开始的时候，会先掉落金币，然后在把地图传给玩家
             self._flush_coins()
         self.turn = 1 if self.turn == 0 else 0
 
+        # rewards 目前就是吃到或者损失的金币数
         rewards = 0
+
         done = False
-        info = dict()
+        info = dict()  # gym 框架需要，暂时没用
+
+        # 对应 [0, 4] 在地图中的变化，第一个元素是行的变化，第二个是列的变化
         moves = [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0)]
 
         r, c = self.agent_positions[agent_id]
         new_r = np.clip(r + moves[move][0], 0, 16)
         new_c = np.clip(c + moves[move][1], 0, 16)
 
+        # 只有新的位置是非障碍物和玩家才有用
         if self.maze[new_r][new_c] not in [-1, -2]:
-            if self.maze[new_r][new_c] != -1:
-                self.agent_positions[agent_id] = (new_r, new_c)
+            self.agent_positions[agent_id] = (new_r, new_c)
 
             self.maze[r][c] = 0
             self.maze[new_r][new_c] = -2
 
-            pos = self.agent_positions[agent_id]
+            pos = (new_r, new_c)
+
+            # 如果新的位置是金币或者炸弹，怎进行相应的处理
             if pos in self.coins:
                 rewards = self.coins[pos]
                 self.coins.pop(pos)
@@ -244,12 +283,15 @@ class GoldRush(gym.Env):
                 self.bombs.remove(pos)
                 self.maze[pos[0]][pos[1]] = 0
 
-            if len(self.coins) == 0:
-                done = True
+        if len(self.coins) == 0 or self.round == self.max_rounds:
+            done = True
 
         return self._get_obs(), rewards, done, False, info
 
     def _get_obs(self):
+        """
+        返回地图，玩家的位置和金币数量作为状态空间（地图中没有-9，需要手动设置）
+        """
         return (
             np.array(self.maze, dtype=np.int32).flatten(),
             copy.deepcopy(tuple(self.agent_positions)),
@@ -257,6 +299,9 @@ class GoldRush(gym.Env):
         )
 
     def _flush_coins(self):
+        """
+        在每回合开始前更新地图中的金币
+        """
         cnt = 0
         while cnt < 4:
             r, c = random.randint(4, 12), random.randint(4, 12)
@@ -268,12 +313,13 @@ class GoldRush(gym.Env):
         self.coins.update({pos: 3 for pos in self.npc_coin_pos})
 
     def render(self):
+        """
+        渲染地图
+        """
         if self.screen is None:
             pygame.init()
             pygame.display.init()
             self.screen = pygame.display.set_mode((900, 900))
-        if self.clock is None:
-            self.clock = pygame.time.Clock()
 
         for r in range(17):
             for c in range(17):

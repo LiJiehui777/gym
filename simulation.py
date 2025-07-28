@@ -13,9 +13,13 @@ if __name__ == "__main__":
     env.render()
 
     player1, player2 = Player(), Player()
+    done = False
+    round = 1
 
-    while True:
+    while not done:
         grid = grid.reshape(17, 17)
+
+        # 在传入 MoveDecision() 之前要先将该玩家的位置改成 -9
         r, c = positions[0]
         grid[r][c] = -9
         moves1 = player1.MoveDecision(grid.tolist(), golds[0], golds[1])
@@ -27,12 +31,18 @@ if __name__ == "__main__":
         grid[r][c] = -2
 
         for i in range(3):
-            logger.info(f"Player 1: {moves1[i]}")
+            logger.info(f"Player 1: round {round} | move = {moves1[i]}")
             (grid, positions, golds), rewards, done, _, info = env.step((0, moves1[i]))
             env.render()
             time.sleep(0.1)
 
-            logger.info(f"Player 1: {moves1[i]}")
+            logger.info(f"Player 2: round {round} | move = {moves2[i]}")
             (grid, positions, golds), rewards, done, _, info = env.step((1, moves2[i]))
+            if done:
+                break
             env.render()
             time.sleep(0.1)
+
+            if done:
+                break
+            round += 1
