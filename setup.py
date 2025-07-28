@@ -68,6 +68,8 @@ setup(
         "importlib_metadata >= 4.8.0; python_version < '3.10'",
         "gym_notices >= 0.0.4",
         "dataclasses == 0.8; python_version == '3.6'",
+        "loguru >= 0.7.2",
+        "box2d-py >= 2.3.8",
     ],
     license="MIT",
     long_description=long_description,
