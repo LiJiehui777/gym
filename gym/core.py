@@ -115,6 +115,9 @@ class Env(Generic[ObsType, ActType]):
         """
         raise NotImplementedError
 
+    def observe(self) -> ObsType:
+        raise NotImplementedError
+
     def reset(
         self,
         *,
@@ -318,6 +321,9 @@ class Wrapper(Env[ObsType, ActType]):
     def step(self, action: ActType) -> Tuple[ObsType, float, bool, bool, dict]:
         """Steps through the environment with action."""
         return self.env.step(action)
+
+    def observe(self) -> ObsType:
+        return self.env.observe()
 
     def reset(self, **kwargs) -> Tuple[ObsType, dict]:
         """Resets the environment with kwargs."""
