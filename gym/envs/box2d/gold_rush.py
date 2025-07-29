@@ -146,12 +146,17 @@ class GoldRush(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 50}
 
     def __init__(
-        self, maze: str = "maze1", max_rounds: int = 900, render_mode: str = "human"
+        self,
+        maze: str = "maze1",
+        stack_frame: int = 1,
+        max_rounds: int = 900,
+        render_mode: str = "human",
     ):
         # 游戏会进行的最大回合数，因为这个环境每轮执行一个动作，因此应该设置成 900 个回合
         self.max_rounds = max_rounds + 1
+        self.stack_frame = stack_frame
         self.maze_type = maze
-        self.maze = copy.deepcopy(mazes[maze])
+        self.maze = np.array(copy.deepcopy(mazes[maze]))
         self.npc_coin_pos = npc_coin_positions[maze]
 
         # 动作空间可看作一个 tuple(int, int)，第一个值是 player1 的动作，第二个值是 player2 的动作，
@@ -162,22 +167,22 @@ class GoldRush(gym.Env):
         # 在使用的时候，需要根据是哪个玩家先将该玩家对应的位置由 -2 改成 -9，然后再传入 MoveDecision() 决策。
         self.observation_space = spaces.Tuple(
             (
-                spaces.Box(low=-9, high=500, shape=(17 * 17,), dtype=np.int32),
-                spaces.Tuple(
-                    (
-                        spaces.Tuple((spaces.Discrete(17), spaces.Discrete(17))),
-                        spaces.Tuple((spaces.Discrete(17), spaces.Discrete(17))),
-                    )
-                ),
-                spaces.Tuple((spaces.Discrete(5000), spaces.Discrete(5000))),
+                spaces.Box(low=0, high=500, shape=(17, 17), dtype=np.float32)
+                for _ in range(6 * self.stack_frame)
             )
         )
+        self.historical_grids = []
+        self.historical_pos = []
+        self.historical_states = []
+        self.last_move = 4
 
         # 两个玩家各自的位置， [player1, player2]
         self.agent_positions: List[Tuple[int, int]] = [(0, 0), (16, 16)]
+        self.last_positions: List[Tuple[int, int]] = [(0, 0), (16, 16)]
 
         self.golds: list[int] = [0, 0]  # 表示两个各自玩家的金币数 [player1, player2]
 
+        # 单读保存金币和炸弹的位置方便可视化
         # 表示地图中所有的金币位置和数值
         self.coins: Dict[Tuple[int, int], int] = dict()
 
@@ -213,6 +218,8 @@ class GoldRush(gym.Env):
             self.player2_image, (GRID_CELL_SIZE - 1, GRID_CELL_SIZE - 1)
         )
 
+        self.reset()
+
     def reset(
         self,
         *,
@@ -224,12 +231,17 @@ class GoldRush(gym.Env):
         """
         self.agent_positions = [(0, 0), (16, 16)]
         self.golds = [0, 0]
-        self.coins = {}
+        self.coins.clear()
+        self.bombs.clear()
         self.round = 1
         self.turn = 0
-        self.maze = copy.deepcopy(mazes[self.maze_type])
+        self.maze = np.array(copy.deepcopy(mazes[self.maze_type]))
         self.maze[0][0] = -2
         self.maze[16][16] = -2
+
+        # Initialize historical states.
+        obs = self._get_obs_frame()
+        self.historical_states = [obs for _ in range(self.stack_frame)]
 
         return self._get_obs(), {}
 
@@ -265,52 +277,101 @@ class GoldRush(gym.Env):
         new_c = np.clip(c + moves[move][1], 0, 16)
 
         # 只有新的位置是非障碍物和玩家才有用
+        self.last_positions = self.agent_positions
         if self.maze[new_r][new_c] not in [-1, -2]:
             self.agent_positions[agent_id] = (new_r, new_c)
 
+            # 如果新的位置是金币或者炸弹，该进行相应的处理
+            if self.maze[new_r][new_c] > 0:
+                rewards = self.maze[new_c][new_c]
+                self.maze[new_r][new_c] = 0
+                self.coins.pop((new_r, new_c))
+            elif self.maze[new_r][new_c] == -3:
+                rewards = -int(self.golds[agent_id] * self.penalty)
+                self.maze[new_r][new_c] = 0
+                self.bombs.remove((new_r, new_c))
+
             self.maze[r][c] = 0
             self.maze[new_r][new_c] = -2
+            self.last_move = move
+        else:
+            rewards = -3
+            self.last_move = 4
 
-            pos = (new_r, new_c)
-
-            # 如果新的位置是金币或者炸弹，怎进行相应的处理
-            if pos in self.coins:
-                rewards = self.coins[pos]
-                self.coins.pop(pos)
-                self.maze[pos[0]][pos[1]] = 0
-            elif pos in self.bombs:
-                rewards = -int(self.golds[agent_id] * self.penalty)
-                self.bombs.remove(pos)
-                self.maze[pos[0]][pos[1]] = 0
-
-        if len(self.coins) == 0 or self.round == self.max_rounds:
+        if self.round == self.max_rounds:
             done = True
+            score, opponent_score = self.golds[agent_id], self.golds[1 - agent_id]
+            rewards = 10000 if score > opponent_score else -10000
+
+        self.historical_states.append(self._get_obs_frame())
+        self.historical_states.pop(0)
 
         return self._get_obs(), rewards, done, False, info
 
-    def _get_obs(self):
-        """
-        返回地图，玩家的位置和金币数量作为状态空间（地图中没有-9，需要手动设置）
-        """
-        return (
-            np.array(self.maze, dtype=np.int32).flatten(),
-            copy.deepcopy(tuple(self.agent_positions)),
-            copy.deepcopy(tuple(self.golds)),
-        )
+    def observe(self):
+        return self._get_obs()
+
+    def display_info(self, agent_id: int):
+        maze = copy.deepcopy(self.maze)
+        r, c = self.agent_positions[agent_id]
+        maze[r][c] = -9
+
+        return maze, copy.deepcopy(self.golds)
+
+    def _get_obs_frame(self) -> np.ndarray:
+        # channel 0
+        agent_pos = np.zeros((17, 17), dtype=np.float32)
+        agent_pos[self.agent_positions[0][0]][self.agent_positions[0][1]] = 1
+
+        # channel 1
+        opponent_pos = np.zeros((17, 17), dtype=np.float32)
+        opponent_pos[self.agent_positions[1][0]][self.agent_positions[1][1]] = 1
+
+        # channel 2
+        coins = np.zeros((17, 17), dtype=np.float32)
+        if len(self.coins) > 0:
+            max_value = max(self.coins.values())
+            for (r, c), value in self.coins.items():
+                coins[r][c] = value / max_value
+
+        # channel 3
+        obstacles = -np.array(mazes[self.maze_type], dtype=np.float32)
+
+        # channel 4
+        bombs = np.zeros((17, 17), dtype=np.float32)
+        for r, c in self.bombs:
+            bombs[r][c] = 1
+
+        # channel 5
+        last_move = np.zeros((17, 17), dtype=np.float32)
+        r, c = self.last_positions[0]
+        last_move[r][c] = self.last_move + 1
+
+        features = [agent_pos, opponent_pos, coins, obstacles, bombs, last_move]
+
+        return np.stack(features, axis=0)
+
+    def _get_obs(self) -> np.ndarray:
+        return np.vstack(self.historical_states)
 
     def _flush_coins(self):
         """
         在每回合开始前更新地图中的金币
         """
         cnt = 0
-        while cnt < 4:
+        while cnt < 1:
             r, c = random.randint(4, 12), random.randint(4, 12)
-            if (r, c) not in self.bombs and self.maze[r][c] != -1:
-                self.coins.update({(r, c): random.randint(3, 25)})
+            if self.maze[r][c] >= 0:
+                value = random.randint(3, 25)
+                self.maze[r][c] += value
+                self.coins.update({(r, c): value})
                 cnt += 1
 
     def _flush_npc(self):
-        self.coins.update({pos: 3 for pos in self.npc_coin_pos})
+        for r, c in self.npc_coin_pos:
+            if self.maze[r][c] >= 0:
+                self.maze[r][c] += 3
+                self.coins.update({(r, c): 3})
 
     def render(self):
         """

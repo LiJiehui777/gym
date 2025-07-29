@@ -118,6 +118,12 @@ class Env(Generic[ObsType, ActType]):
     def observe(self) -> ObsType:
         raise NotImplementedError
 
+    def display_info(self, agent_id: int) -> Tuple[np.ndarray, list]:
+        """
+        0:player1, 1: player2
+        """
+        raise NotImplementedError
+
     def reset(
         self,
         *,
@@ -324,6 +330,9 @@ class Wrapper(Env[ObsType, ActType]):
 
     def observe(self) -> ObsType:
         return self.env.observe()
+
+    def display_info(self, agent_id: int) -> Tuple[np.ndarray, list]:
+        return self.env.display_info(agent_id)
 
     def reset(self, **kwargs) -> Tuple[ObsType, dict]:
         """Resets the environment with kwargs."""
