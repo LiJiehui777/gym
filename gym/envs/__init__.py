@@ -95,6 +95,12 @@ register(
     max_episode_steps=300,
 )
 
+register(
+    id="GoldRushNew-v0",
+    entry_point="gym.envs.box2d.gold_rush_new:GoldRushNew",
+    max_episode_steps=3000,
+)
+
 # Toy Text
 # ----------------------------------------
 
