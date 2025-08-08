@@ -141,7 +141,7 @@ class Agent(nn.Module):
         #     nn.ReLU()
         # )
         self.network = nn.Sequential(
-            layer_init(nn.Conv2d(5, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(20, 32, 3, stride=1)),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
             layer_init(nn.Conv2d(32, 64, 3, stride=1)),
@@ -149,7 +149,7 @@ class Agent(nn.Module):
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
             nn.Flatten(),
-            layer_init(nn.Linear(64 * 5 * 5, 256)),
+            layer_init(nn.Linear(64 * 3 * 3, 256)),
             nn.ReLU()
         )
         # self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
