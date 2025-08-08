@@ -49,7 +49,7 @@ class Args:
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
-    num_envs: int = 1
+    num_envs: int = 4
     """the number of parallel game environments"""
     num_steps: int = 900
     """the number of steps to run in each environment per policy rollout"""
@@ -140,30 +140,55 @@ class Agent(nn.Module):
         #     layer_init(nn.Linear(64 * 11 * 11, 512)),
         #     nn.ReLU()
         # )
+        # self.network = nn.Sequential(
+        #     layer_init(nn.Conv2d(5, 32, 3, stride=1)),
+        #     nn.ReLU(),
+        #     layer_init(nn.Conv2d(32, 64, 3, stride=1)),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(2, 2),
+        #     layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+        #     nn.ReLU(),
+        #     nn.Flatten(),
+        #     layer_init(nn.Linear(64 * 3 * 3, 256)),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(2, 2),
+        # )
         self.network = nn.Sequential(
-            layer_init(nn.Conv2d(20, 32, 3, stride=1)),
+            # 第一层卷积：5×17×17 → 32×15×15（无padding）
+            layer_init(nn.Conv2d(5, 32, 3, stride=1)),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2),
+            # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1)),
             nn.ReLU(),
+            # 第一次池化：64×13×13 → 64×6×6（2×2池化）
+            nn.MaxPool2d(2, 2),
+            # 第三层卷积：64×6×6 → 64×4×4（无padding）
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
+            # 第二次池化（可选，进一步压缩尺寸）：64×4×4 → 64×2×2
+            nn.MaxPool2d(2, 2),
+            # 展平：64×2×2 = 256
             nn.Flatten(),
-            layer_init(nn.Linear(64 * 3 * 3, 256)),
-            nn.ReLU()
+            # 修正线性层输入维度（256 → 256）
+            layer_init(nn.Linear(64 * 2 * 2, 128)),
+            nn.ReLU(),
         )
         # self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
         # self.actor = layer_init(nn.Linear(512, envs.single_action_space.nvec[0]), std=0.01)
         # self.critic = layer_init(nn.Linear(512, 1), std=1)
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(256, 128)),
+            layer_init(nn.Linear(128, 64)),
             nn.ReLU(),
-            layer_init(nn.Linear(128, envs.single_action_space.nvec[0]), std=0.01)
+            layer_init(nn.Linear(64, 32)),
+            nn.ReLU(),
+            layer_init(nn.Linear(32, envs.single_action_space.n), std=0.01)
         )
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(256, 128)),
+            layer_init(nn.Linear(128, 64)),
             nn.ReLU(),
-            layer_init(nn.Linear(128, 1), std=1)
+            layer_init(nn.Linear(64, 16 )),
+            nn.ReLU(),
+            layer_init(nn.Linear(16, 1), std=1)
         )
 
     def get_value(self, x):
@@ -176,6 +201,18 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
+
+
+    def get_value(self, x):
+        return self.critic(self.network(x))
+
+    # def get_action_and_value(self, x, action=None):
+    #     hidden = self.network(x)
+    #     logits = self.actor(hidden)
+    #     probs = Categorical(logits=logits)
+    #     if action is None:
+    #         action = probs.sample()
+    #     return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
 
 
 if __name__ == "__main__":
@@ -215,6 +252,7 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv(
         [make_env(args.env_id, i, args.capture_video, run_name) for i in range(args.num_envs)],
     )
+    # envs = gym.make(args.env_id)
     # envs = gym.make(args.env_id, maze="maze1")
     # assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -223,8 +261,9 @@ if __name__ == "__main__":
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
-    # actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
-    actions = torch.zeros(args.num_steps, args.num_envs, int(envs.single_action_space.nvec[0])).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    # actions = torch.zeros(args.num_steps, args.num_envs, int(envs.single_action_space.nvec[0])).to(device)
+    # actions = torch.zeros(args.num_steps, args.num_envs, envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -262,9 +301,11 @@ if __name__ == "__main__":
 
             # TRY NOT TO MODIFY: execute the game and log data.
             # 假设当前只有一个玩家
-            # next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
-            player1_action = tuple([(0, action.cpu().numpy().item())] * Args.num_envs)
-            next_obs, reward, terminations, truncations, infos = envs.step(player1_action)
+            next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            # player1_action = tuple([(0, action.cpu().numpy().item())] * Args.num_envs)
+            # next_obs, reward, terminations, truncations, infos = envs.step(player1_action)
+            # next_obs = _next_obs.squeeze(axis=0)
+
             # if isinstance(next_obs, np.ndarray):
             #     with open("output.txt", "a") as f:
             #         np.set_printoptions(threshold=np.inf)  # 防止截断

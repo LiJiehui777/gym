@@ -178,10 +178,12 @@ class GoldRushNew(gym.Env):
 
         # 动作空间可看作一个 tuple(int, int)，第一个值是 player1 的动作，第二个值是 player2 的动作，
         # 0: 上，1: 下，2: 左，3: 右，4: 不动。
-        self.action_space = spaces.MultiDiscrete([5, 5])
+        # self.action_space = spaces.MultiDiscrete([5, 5])
+        self.action_space = spaces.Discrete(5)
 
         # 判断玩家2是否存在
         self.has_player2 = has_player2
+        self.is_multi_frame = False
 
         # 状态空间是 grid,两个玩家的位置和金币数。
         # 在使用的时候，需要根据是哪个玩家先将该玩家对应的位置由 -2 改成 -9，然后再传入 MoveDecision() 决策。
@@ -262,14 +264,19 @@ class GoldRushNew(gym.Env):
         obs = self._get_obs_frame()
         self.historical_states = [obs for _ in range(self.stack_frame)]
 
-        return self._get_obs(), {}
+        if self.is_multi_frame:
+            return self._get_obs(), {}
+        else:
+            return self._get_obs_frame(), {}
 
-    def step(self, action: Tuple[int, int]):
+
+    def step(self, action):
         """
         这个函数只会执行一个玩家的动作，action 的第一个变量表示是哪个玩家,0: player1, 1:player2，
         第二个变量表示具体的动作，范围是 [0, 4]，具体含义和游戏规则一样
         """
-        agent_id, move = action
+        agent_id = 0
+        move = action
 
         # 更新地图
         # if self.turn == 0:
@@ -363,11 +370,17 @@ class GoldRushNew(gym.Env):
         self.historical_states.append(self._get_obs_frame())
         self.historical_states.pop(0)
 
-        return self._get_obs(), rewards, done, False, info
+        if self.is_multi_frame:
+            return self._get_obs(), rewards, done, False, info
+        else:
+            a = self._get_obs_frame()
+            return self._get_obs_frame(), rewards, done, False, info
+
+
 
     def _get_obs_frame(self) -> np.ndarray:
         if self.has_player2:
-            return np.stack([
+            obs = np.stack([
                 self.maze[0],  # agent
                 self.maze[1],  # opponent
                 self.maze[2],  # coins
@@ -375,14 +388,16 @@ class GoldRushNew(gym.Env):
                 self.maze[4],  # bombs
                 self.maze[5],  
             ], axis=0)
+            return obs
         else:
-            return np.stack([
+            obs = np.stack([
                 self.maze[0],  # agent
                 self.maze[1] / 25,  # coins
                 self.maze[2],  # obstacles
                 self.maze[3],  # bombs
                 self.maze[4] / 5,
             ], axis=0)
+            return obs
 
     def _get_obs(self) -> np.ndarray:
         return np.vstack(self.historical_states)
