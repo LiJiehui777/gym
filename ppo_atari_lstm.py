@@ -1,10 +1,9 @@
-# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_ataripy
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_atari_lstmpy
 import os
 import random
 import time
 from dataclasses import dataclass
 
-# import gymnasium as gym
 import gym
 import numpy as np
 import torch
@@ -21,9 +20,6 @@ from cleanrl_utils.atari_wrappers import (  # isort:skip
     MaxAndSkipEnv,
     NoopResetEnv,
 )
-
-from pathlib import Path
-import shutil
 
 
 @dataclass
@@ -106,7 +102,7 @@ def make_env(env_id, idx, capture_video, run_name):
         # env = ClipRewardEnv(env)
         # env = gym.wrappers.ResizeObservation(env, (84, 84))
         # env = gym.wrappers.GrayScaleObservation(env)
-        # env = gym.wrappers.FrameStack(env, 4)
+        # env = gym.wrappers.FrameStack(env, 1)
         return env
 
     return thunk
@@ -122,7 +118,7 @@ class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
         # self.network = nn.Sequential(
-        #     layer_init(nn.Conv2d(4, 32, 8, stride=4)),
+        #     layer_init(nn.Conv2d(1, 32, 8, stride=4)),
         #     nn.ReLU(),
         #     layer_init(nn.Conv2d(32, 64, 4, stride=2)),
         #     nn.ReLU(),
@@ -132,39 +128,13 @@ class Agent(nn.Module):
         #     layer_init(nn.Linear(64 * 7 * 7, 512)),
         #     nn.ReLU(),
         # )
-        # self.network = nn.Sequential(
-        #     layer_init(nn.Conv2d(5, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(32, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     layer_init(nn.Linear(64 * 11 * 11, 512)),
-        #     nn.ReLU()
-        # )
-        # self.network = nn.Sequential(
-        #     layer_init(nn.Conv2d(5, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(32, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(2, 2),
-        #     layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     layer_init(nn.Linear(64 * 3 * 3, 256)),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(2, 2),
-        # )
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×15×15（无padding）
-            layer_init(nn.Conv2d(5, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(20, 32, 3, stride=1)),
             nn.ReLU(),
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1)),
             nn.ReLU(),
-            # 第一次池化：64×13×13 → 64×6×6（2×2池化）
-            nn.MaxPool2d(2, 2),
             # 第三层卷积：64×6×6 → 64×4×4（无padding）
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
@@ -173,12 +143,16 @@ class Agent(nn.Module):
             # 展平：64×2×2 = 256
             nn.Flatten(),
             # 修正线性层输入维度（256 → 256）
-            layer_init(nn.Linear(64 * 2 * 2, 128)),
+            layer_init(nn.Linear(64 * 5 * 5, 512)),
             nn.ReLU(),
         )
-        # self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
-        # self.actor = layer_init(nn.Linear(512, envs.single_action_space.nvec[0]), std=0.01)
-        # self.critic = layer_init(nn.Linear(512, 1), std=1)
+        self.lstm = nn.LSTM(512, 128)
+        for name, param in self.lstm.named_parameters():
+            if "bias" in name:
+                nn.init.constant_(param, 0)
+            elif "weight" in name:
+                nn.init.orthogonal_(param, 1.0)
+        # self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         self.actor = nn.Sequential(
             layer_init(nn.Linear(128, 64)),
             nn.ReLU(),
@@ -186,52 +160,54 @@ class Agent(nn.Module):
             nn.ReLU(),
             layer_init(nn.Linear(32, envs.single_action_space.n), std=0.01)
         )
+        # self.critic = layer_init(nn.Linear(128, 1), std=1)
         self.critic = nn.Sequential(
             layer_init(nn.Linear(128, 64)),
             nn.ReLU(),
-            layer_init(nn.Linear(64, 16 )),
+            layer_init(nn.Linear(64, 16)),
             nn.ReLU(),
             layer_init(nn.Linear(16, 1), std=1)
         )
 
-    def get_value(self, x):
-        return self.critic(self.network(x))
-
-    def get_action_and_value(self, x, action=None):
+    def get_states(self, x, lstm_state, done):
         hidden = self.network(x)
+
+        # LSTM logic
+        batch_size = lstm_state[0].shape[1]
+        hidden = hidden.reshape((-1, batch_size, self.lstm.input_size))
+        done = done.reshape((-1, batch_size))
+        new_hidden = []
+        for h, d in zip(hidden, done):
+            h, lstm_state = self.lstm(
+                h.unsqueeze(0),
+                (
+                    (1.0 - d).view(1, -1, 1) * lstm_state[0],
+                    (1.0 - d).view(1, -1, 1) * lstm_state[1],
+                ),
+            )
+            new_hidden += [h]
+        new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
+        return new_hidden, lstm_state
+
+    def get_value(self, x, lstm_state, done):
+        hidden, _ = self.get_states(x, lstm_state, done)
+        return self.critic(hidden)
+
+    def get_action_and_value(self, x, lstm_state, done, action=None):
+        hidden, lstm_state = self.get_states(x, lstm_state, done)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
-
-
-    def get_value(self, x):
-        return self.critic(self.network(x))
-
-    # def get_action_and_value(self, x, action=None):
-    #     hidden = self.network(x)
-    #     logits = self.actor(hidden)
-    #     probs = Categorical(logits=logits)
-    #     if action is None:
-    #         action = probs.sample()
-    #     return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
+        return action, probs.log_prob(action), probs.entropy(), self.critic(hidden), lstm_state
 
 
 if __name__ == "__main__":
-    # print(gym.__file__)
     args = tyro.cli(Args)
-    args.batch_size = int(args.num_envs * args.num_steps)  # 128
-    args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
-    args.num_iterations = args.total_timesteps // args.batch_size  # 78125
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.num_iterations = args.total_timesteps // args.batch_size
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-
-    # 创建模型保存目录
-    model_dir = Path(f"runs/{run_name}/models")
-    model_dir.mkdir(parents=True, exist_ok=True)
-
-    # 初始化最佳成绩记录
-    best_score = -float('inf')  # 用于保存最佳模型
     if args.track:
         import wandb
 
@@ -262,9 +238,7 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv(
         [make_env(args.env_id, i, args.capture_video, run_name) for i in range(args.num_envs)],
     )
-    # envs = gym.make(args.env_id)
-    # envs = gym.make(args.env_id, maze="maze1")
-    # assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
@@ -272,8 +246,6 @@ if __name__ == "__main__":
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
-    # actions = torch.zeros(args.num_steps, args.num_envs, int(envs.single_action_space.nvec[0])).to(device)
-    # actions = torch.zeros(args.num_steps, args.num_envs, envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -283,49 +255,35 @@ if __name__ == "__main__":
     global_step = 0
     start_time = time.time()
     next_obs, _ = envs.reset(seed=args.seed)
-    if isinstance(next_obs, np.ndarray):
-        np.set_printoptions(threshold=np.inf)  
-        print("next_obs shape:", next_obs.shape)
-        print(next_obs)
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
+    next_lstm_state = (
+        torch.zeros(agent.lstm.num_layers, args.num_envs, agent.lstm.hidden_size).to(device),
+        torch.zeros(agent.lstm.num_layers, args.num_envs, agent.lstm.hidden_size).to(device),
+    )  # hidden and cell states (see https://youtu.be/8HyCNIVRbSU)
 
     for iteration in range(1, args.num_iterations + 1):
+        initial_lstm_state = (next_lstm_state[0].clone(), next_lstm_state[1].clone())
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
 
-        for step in range(0, args.num_steps):  # 128
+        for step in range(0, args.num_steps):
             global_step += args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(next_obs)
+                action, logprob, _, value, next_lstm_state = agent.get_action_and_value(next_obs, next_lstm_state, next_done)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            # 假设当前只有一个玩家
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
-            # player1_action = tuple([(0, action.cpu().numpy().item())] * Args.num_envs)
-            # next_obs, reward, terminations, truncations, infos = envs.step(player1_action)
-            # next_obs = _next_obs.squeeze(axis=0)
-
-            # if isinstance(next_obs, np.ndarray):
-            #     with open("output.txt", "a") as f:
-            #         np.set_printoptions(threshold=np.inf)  # 防止截断
-            #         f.write(f"action: {action}\n")
-            #         f.write(f"next_obs shape: {next_obs.shape}\n")
-            #         f.write(np.array2string(next_obs, threshold=np.inf))
-            # if isinstance(next_obs, np.ndarray):
-            #     np.set_printoptions(threshold=np.inf)  
-            #     print("next_obs shape:", next_obs.shape)
-            #     print(next_obs)
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
@@ -339,7 +297,11 @@ if __name__ == "__main__":
 
         # bootstrap value if not done
         with torch.no_grad():
-            next_value = agent.get_value(next_obs).reshape(1, -1)
+            next_value = agent.get_value(
+                next_obs,
+                next_lstm_state,
+                next_done,
+            ).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             for t in reversed(range(args.num_steps)):
@@ -356,20 +318,31 @@ if __name__ == "__main__":
         # flatten the batch
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1, ))
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_dones = dones.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
         # Optimizing the policy and value network
-        b_inds = np.arange(args.batch_size)
+        assert args.num_envs % args.num_minibatches == 0
+        envsperbatch = args.num_envs // args.num_minibatches
+        envinds = np.arange(args.num_envs)
+        flatinds = np.arange(args.batch_size).reshape(args.num_steps, args.num_envs)
         clipfracs = []
         for epoch in range(args.update_epochs):
-            np.random.shuffle(b_inds)
-            for start in range(0, args.batch_size, args.minibatch_size):
-                end = start + args.minibatch_size
-                mb_inds = b_inds[start:end]
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
+            np.random.shuffle(envinds)
+            for start in range(0, args.num_envs, envsperbatch):
+                end = start + envsperbatch
+                mbenvinds = envinds[start:end]
+                mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
+
+                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
+                    b_obs[mb_inds],
+                    (initial_lstm_state[0][:, mbenvinds], initial_lstm_state[1][:, mbenvinds]),
+                    b_dones[mb_inds],
+                    b_actions.long()[mb_inds],
+                )
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -429,38 +402,6 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-
-        if global_step % 180000 == 0:
-            checkpoint_path = model_dir / f"checkpoint_step{global_step}.pt"
-            torch.save({
-                'model': agent.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'args': vars(args),
-                'global_step': global_step,
-                'timestamp': time.time()
-            }, checkpoint_path)
-            print(f"Checkpoint saved at step {global_step}")
-
-        if "final_info" in infos:
-            for info in infos["final_info"]:
-                if info and 'episode' in info:
-                    current_score = info['episode']['r']
-                    if current_score > best_score:
-                        best_score = current_score
-                        best_model_path = model_dir / "best_model.pt"
-                        torch.save(agent.state_dict(), best_model_path)
-                        print(f"New best model saved with score: {best_score:.2f}")
-
-    final_model_path = model_dir / "final_model.pt"
-    torch.save({
-        'model': agent.state_dict(),
-        'optimizer': optimizer.state_dict(),
-        'args': vars(args),
-        'total_steps': global_step,
-        'final_score': best_score,
-        'training_time': time.time() - start_time
-    }, final_model_path)
-    print(f"Training completed. Final model saved to {final_model_path}")
 
     envs.close()
     writer.close()

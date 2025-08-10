@@ -164,7 +164,7 @@ class GoldRushNew(gym.Env):
     def __init__(
         self,
         maze: str = "maze1",
-        stack_frame: int = 1,
+        stack_frame: int = 4,
         max_rounds: int = 900,
         render_mode: str = "human",
         has_player2: bool = False,
@@ -183,7 +183,7 @@ class GoldRushNew(gym.Env):
 
         # 判断玩家2是否存在
         self.has_player2 = has_player2
-        self.is_multi_frame = False
+        self.is_multi_frame = False if stack_frame == 1 else True
 
         # 状态空间是 grid,两个玩家的位置和金币数。
         # 在使用的时候，需要根据是哪个玩家先将该玩家对应的位置由 -2 改成 -9，然后再传入 MoveDecision() 决策。
