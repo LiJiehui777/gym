@@ -121,44 +121,9 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
-        # self.network = nn.Sequential(
-        #     layer_init(nn.Conv2d(4, 32, 8, stride=4)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(32, 64, 4, stride=2)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     layer_init(nn.Linear(64 * 7 * 7, 512)),
-        #     nn.ReLU(),
-        # )
-        # self.network = nn.Sequential(
-        #     layer_init(nn.Conv2d(5, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(32, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     layer_init(nn.Linear(64 * 11 * 11, 512)),
-        #     nn.ReLU()
-        # )
-        # self.network = nn.Sequential(
-        #     layer_init(nn.Conv2d(5, 32, 3, stride=1)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Conv2d(32, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(2, 2),
-        #     layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     layer_init(nn.Linear(64 * 3 * 3, 256)),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(2, 2),
-        # )
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×15×15（无padding）
-            layer_init(nn.Conv2d(5, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(30, 32, 3, stride=1)),
             nn.ReLU(),
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1)),

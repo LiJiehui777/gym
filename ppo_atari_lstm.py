@@ -130,11 +130,13 @@ class Agent(nn.Module):
         # )
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×15×15（无padding）
-            layer_init(nn.Conv2d(20, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(30, 32, 3, stride=1)),
             nn.ReLU(),
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1)),
             nn.ReLU(),
+            # 第一次池化：64×13×13 → 64×6×6（2×2池化）
+            nn.MaxPool2d(2, 2),
             # 第三层卷积：64×6×6 → 64×4×4（无padding）
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
@@ -143,10 +145,10 @@ class Agent(nn.Module):
             # 展平：64×2×2 = 256
             nn.Flatten(),
             # 修正线性层输入维度（256 → 256）
-            layer_init(nn.Linear(64 * 5 * 5, 512)),
+            layer_init(nn.Linear(64 * 2 * 2, 128)),
             nn.ReLU(),
         )
-        self.lstm = nn.LSTM(512, 128)
+        self.lstm = nn.LSTM(128, 64)
         for name, param in self.lstm.named_parameters():
             if "bias" in name:
                 nn.init.constant_(param, 0)
@@ -154,16 +156,12 @@ class Agent(nn.Module):
                 nn.init.orthogonal_(param, 1.0)
         # self.actor = layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(128, 64)),
-            nn.ReLU(),
             layer_init(nn.Linear(64, 32)),
             nn.ReLU(),
             layer_init(nn.Linear(32, envs.single_action_space.n), std=0.01)
         )
         # self.critic = layer_init(nn.Linear(128, 1), std=1)
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(128, 64)),
-            nn.ReLU(),
             layer_init(nn.Linear(64, 16)),
             nn.ReLU(),
             layer_init(nn.Linear(16, 1), std=1)
@@ -207,7 +205,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"lstm_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
