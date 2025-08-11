@@ -69,6 +69,7 @@ class PPOModelWrapper:
             logits = self.model.actor(hidden)
             probs = Categorical(logits=logits)
             best_action = probs.sample().item()
+            # best_action = torch.argmax(probs.probs).item()
             return best_action
 
 class Player:
@@ -185,7 +186,7 @@ class Player:
         
     
 if __name__ == "__main__":
-    player = Player('./runs/GoldRushNew-v0__ppo_atari__1__1754797870/models/checkpoint_step9900000.pt')
+    player = Player('./runs/GoldRushNew-v0__ppo_atari__1__1754896481/models/checkpoint_step8100000.pt')
     env = gym.make("GoldRushNew-v0", maze="maze1", stack_frame=3)
     obs, _ = env.reset()
     env.render()
