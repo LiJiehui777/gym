@@ -164,7 +164,7 @@ class GoldRushNew(gym.Env):
     def __init__(
         self,
         maze: str = "maze1",
-        stack_frame: int = 4,
+        stack_frame: int = 3,
         max_rounds: int = 900,
         render_mode: str = "human",
         has_player2: bool = False,
@@ -375,8 +375,22 @@ class GoldRushNew(gym.Env):
         else:
             a = self._get_obs_frame()
             return self._get_obs_frame(), rewards, done, False, info
+        
+    def display_info(self, agent_id: int):
+        maze_new = np.zeros((17, 17), dtype=np.float32)
+        for j in range(17):
+            for k in range(17):
+                if self.maze[1, j, k] >= 1:
+                    maze_new[j, k] = self.maze[1, j, k]
+                elif self.maze[2, j, k] == 1:
+                    maze_new[j, k] = -1
+                elif self.maze[3, j, k] == 1:
+                    maze_new[j, k] = -3
 
+        r, c = self.agent_positions[agent_id]
+        maze_new[r][c] = -9
 
+        return maze_new, copy.deepcopy(self.golds)
 
     def _get_obs_frame(self) -> np.ndarray:
         if self.has_player2:
@@ -426,7 +440,7 @@ class GoldRushNew(gym.Env):
         cnt = 0
         while cnt < 1:
             r, c = random.randint(4, 12), random.randint(4, 12)
-            if self._is_position_valid(r, c):
+            if self._is_position_valid(r, c) and self.maze[3, r, c] == 0:
                 value = random.randint(3, 25)
                 self.maze[1, r, c] = value
                 self.coins.update({(r, c): value})
@@ -448,3 +462,106 @@ class GoldRushNew(gym.Env):
                 self.bombs.add((r, c))
                 self.maze[3, r, c] = 1
                 cnt += 1
+
+    def render(self):
+        """
+        渲染地图和游戏状态（支持单/双玩家模式）
+        """
+        # 初始化pygame显示
+        if not hasattr(self, 'screen'):
+            pygame.init()
+            pygame.display.init()
+            self.screen = pygame.display.set_mode((900, 900))
+            
+            # 加载图像资源（失败时用彩色方块替代）
+            try:
+                self.box_image = pygame.image.load("box.png").convert_alpha()
+                self.bomb_image = pygame.image.load("bomb.png").convert_alpha()
+                self.player1_image = pygame.image.load("player1.png").convert_alpha()
+                self.player2_image = pygame.image.load("player2.png").convert_alpha()
+            except:
+                # 创建替代图像
+                self.box_image = pygame.Surface((GRID_CELL_SIZE, GRID_CELL_SIZE))
+                self.box_image.fill((139, 69, 19))  # 棕色障碍物
+                self.bomb_image = pygame.Surface((GRID_CELL_SIZE, GRID_CELL_SIZE))
+                self.bomb_image.fill((255, 0, 0))    # 红色炸弹
+                self.player1_image = pygame.Surface((GRID_CELL_SIZE, GRID_CELL_SIZE))
+                self.player1_image.fill((0, 0, 255))  # 蓝色玩家1
+                self.player2_image = pygame.Surface((GRID_CELL_SIZE, GRID_CELL_SIZE))
+                self.player2_image.fill((255, 0, 255)) # 粉色玩家2
+
+        # 清空画布
+        self.screen.fill((0, 0, 0))
+
+        # 绘制网格和对象
+        for r in range(17):
+            for c in range(17):
+                rect = pygame.Rect(
+                    GRID_OFFSET_X + c * GRID_CELL_SIZE,
+                    GRID_OFFSET_Y + r * GRID_CELL_SIZE,
+                    GRID_CELL_SIZE,
+                    GRID_CELL_SIZE
+                )
+                
+                # 绘制背景格子
+                pygame.draw.rect(self.screen, GRID_BG, rect)
+                
+                # 绘制障碍物（Channel 2）
+                if self.maze[2, r, c] == 1:
+                    self.screen.blit(self.box_image, rect)
+                
+                # 绘制炸弹（Channel 3）
+                if (r, c) in self.bombs:
+                    self.screen.blit(self.bomb_image, rect)
+                
+                # 绘制金币（Channel 1）
+                if (r, c) in self.coins:
+                    pygame.draw.circle(
+                        self.screen, COIN_COLOR, rect.center, 
+                        GRID_CELL_SIZE // 2 - 4
+                    )
+                    # 显示金币数值
+                    font = pygame.font.SysFont(None, 24)
+                    text = font.render(
+                        str(self.coins[(r, c)]), True, (0, 0, 0)
+                    )
+                    text_rect = text.get_rect(center=rect.center)
+                    self.screen.blit(text, text_rect)
+                
+                # 绘制网格线
+                pygame.draw.rect(self.screen, (255, 255, 255), rect, 1)
+
+        # 绘制玩家1
+        p1_r, p1_c = self.agent_positions[0]
+        p1_rect = pygame.Rect(
+            GRID_OFFSET_X + p1_c * GRID_CELL_SIZE,
+            GRID_OFFSET_Y + p1_r * GRID_CELL_SIZE,
+            GRID_CELL_SIZE,
+            GRID_CELL_SIZE
+        )
+        self.screen.blit(self.player1_image, p1_rect)
+
+        # 绘制玩家2（如果存在）
+        if self.has_player2:
+            p2_r, p2_c = self.agent_positions[1]
+            p2_rect = pygame.Rect(
+                GRID_OFFSET_X + p2_c * GRID_CELL_SIZE,
+                GRID_OFFSET_Y + p2_r * GRID_CELL_SIZE,
+                GRID_CELL_SIZE,
+                GRID_CELL_SIZE
+            )
+            self.screen.blit(self.player2_image, p2_rect)
+
+        # 显示游戏状态信息
+        font = pygame.font.SysFont(None, 36)
+        info_text = [
+            f"Round: {self.round}/{self.max_rounds}",
+            f"Player1 Gold: {self.golds[0]}",
+            f"Player2 Gold: {self.golds[1]}" if self.has_player2 else ""
+        ]
+        
+        for i, text in enumerate(filter(None, info_text)):
+            text_surface = font.render(text, True, (255, 255, 255))
+            self.screen.blit(text_surface, (20, 20 + i * 40))
+
+        pygame.display.flip()

@@ -123,7 +123,7 @@ class Agent(nn.Module):
         super().__init__()
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×15×15（无padding）
-            layer_init(nn.Conv2d(30, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(15, 32, 3, stride=1)),
             nn.ReLU(),
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1)),
