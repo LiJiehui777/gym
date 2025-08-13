@@ -263,6 +263,8 @@ class GoldRushNew(gym.Env):
         # Initialize historical states.
         obs = self._get_obs_frame()
         self.historical_states = [obs for _ in range(self.stack_frame)]
+        # obs_channel_agent = self._get_obs_frame_channel_agent()
+        # self.historical_agent_states = [obs_channel_agent for _ in range(self.stack_frame)]
 
         if self.is_multi_frame:
             return self._get_obs(), {}
@@ -293,6 +295,8 @@ class GoldRushNew(gym.Env):
             # 每20个回合会有 npc 随机掉落金币
             self._flush_npc()
             self._flush_bomb()
+            obs = self._get_obs_frame()
+            self.historical_states = [obs for _ in range(self.stack_frame)]
         self.round += 1
         if self.round % 3 == 1 and self.round != 1:
             self._flush_coins()
@@ -318,6 +322,12 @@ class GoldRushNew(gym.Env):
         new_r = np.clip(r + moves[move][0], 0, 16)
         new_c = np.clip(c + moves[move][1], 0, 16)
 
+        # 接近价值/步数最大的金币
+        old_target = self._distance_to_nearest_coin(r, c)
+        new_target = self._distance_to_nearest_coin(new_r, new_c)
+        if old_target and new_target and old_target[0] == new_target[0]:
+            rewards += 0.1 * (old_target[1] - new_target[1])
+
         # 只有新的位置是非障碍物和玩家才有用
         self.last_positions = self.agent_positions.copy()
         old_r, old_c = self.last_positions[agent_id]
@@ -341,18 +351,27 @@ class GoldRushNew(gym.Env):
                 if self.maze[1, new_r, new_c] > 0:  # 金币
                     rewards = self.maze[1, new_r, new_c]
                     self.maze[1, new_r, new_c] = 0
+                    self.golds[agent_id] += rewards
                     self.coins.pop((new_r, new_c))
                 elif self.maze[3, new_r, new_c] == 1:  # 炸弹
                     rewards = -int(self.golds[agent_id] * self.penalty)
                     self.maze[3, new_r, new_c] = 0
+                    self.golds[agent_id] += rewards
                     self.bombs.remove((new_r, new_c))
+                else:
+                    rewards = -1
 
-            self.last_move = move
+            self.last_move = move 
         else:
             rewards = -3
             self.last_move = 4
 
-        self.golds[agent_id] += rewards
+        # nearest_coin_dist = self._distance_to_nearest_coin(agent_id)
+        # if nearest_coin_dist < 3:
+        #     rewards += (1 - nearest_coin_dist / 32)
+        # else:
+        #     rewards += 0.2 * (1 - nearest_coin_dist / 32)
+        # rewards += 0.5 * (1 - nearest_coin_dist)
 
         # 更新新的上一步信息
         if self.has_player2:
@@ -369,6 +388,8 @@ class GoldRushNew(gym.Env):
 
         self.historical_states.append(self._get_obs_frame())
         self.historical_states.pop(0)
+        # self.historical_agent_states.append(self._get_obs_frame_channel_agent())
+        # self.historical_agent_states.pop(0)
 
         if self.is_multi_frame:
             return self._get_obs(), rewards, done, False, info
@@ -392,6 +413,19 @@ class GoldRushNew(gym.Env):
 
         return maze_new, copy.deepcopy(self.golds)
 
+    def _distance_to_nearest_coin(self, r, c):
+        r, c = r, c
+        ratio = float('-inf')
+        
+        for coin_pos in self.coins:
+            dist = abs(r - coin_pos[0]) + abs(c - coin_pos[1])  # 曼哈顿距离
+            coin = self.maze[1, coin_pos[0], coin_pos[1]]
+            if ratio < coin / dist:
+                ratio = coin / dist
+                location = (coin_pos[0], coin_pos[1])
+        
+        return (location, ratio)
+
     def _get_obs_frame(self) -> np.ndarray:
         if self.has_player2:
             obs = np.stack([
@@ -400,7 +434,7 @@ class GoldRushNew(gym.Env):
                 self.maze[2],  # coins
                 self.maze[3],  # obstacles
                 self.maze[4],  # bombs
-                self.maze[5],  
+                self.maze[5],
             ], axis=0)
             return obs
         else:
@@ -413,8 +447,14 @@ class GoldRushNew(gym.Env):
             ], axis=0)
             return obs
 
+    # def _get_obs_frame_channel_agent(self) -> np.ndarray:
+    #     return self.maze[0].flatten().reshape(1, -1)
+
     def _get_obs(self) -> np.ndarray:
         return np.vstack(self.historical_states)
+
+    # def _get_obs_channel_agent(self) -> np.ndarray:
+    #     return np.vstack(self.historical_agent_states)
     
     def _is_position_valid(self, r: int, c: int) -> bool:
         # 判断新的位置是否是非障碍物和玩家

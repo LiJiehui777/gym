@@ -48,13 +48,13 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "GoldRushNew-v0"
     """the id of the environment"""
-    total_timesteps: int = 10000000
+    total_timesteps: int = 100000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
     num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 900
+    num_steps: int = 256
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -123,10 +123,11 @@ class Agent(nn.Module):
         super().__init__()
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×15×15（无padding）
-            layer_init(nn.Conv2d(15, 32, 3, stride=1)),
+            # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
             nn.ReLU(),
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
-            layer_init(nn.Conv2d(32, 64, 3, stride=1)),
+            layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
             nn.ReLU(),
             # 第一次池化：64×13×13 → 64×6×6（2×2池化）
             nn.MaxPool2d(2, 2),
@@ -138,32 +139,41 @@ class Agent(nn.Module):
             # 展平：64×2×2 = 256
             nn.Flatten(),
             # 修正线性层输入维度（256 → 256）
-            layer_init(nn.Linear(64 * 2 * 2, 128)),
+            layer_init(nn.Linear(64 * 3 * 3, 17 * 17)),
             nn.ReLU(),
         )
-        # self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
-        # self.actor = layer_init(nn.Linear(512, envs.single_action_space.nvec[0]), std=0.01)
-        # self.critic = layer_init(nn.Linear(512, 1), std=1)
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(128, 64)),
+            layer_init(nn.Linear(17 * 17 * 4, 256)),
             nn.ReLU(),
-            layer_init(nn.Linear(64, 32)),
+            layer_init(nn.Linear(256, 128)),
             nn.ReLU(),
-            layer_init(nn.Linear(32, envs.single_action_space.n), std=0.01)
+            layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         )
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(128, 64)),
+            layer_init(nn.Linear(17 * 17 * 4, 256)),
             nn.ReLU(),
-            layer_init(nn.Linear(64, 16 )),
+            layer_init(nn.Linear(256, 128 )),
             nn.ReLU(),
-            layer_init(nn.Linear(16, 1), std=1)
+            layer_init(nn.Linear(128, 1), std=1)
         )
+        # self.agent_location = nn.Sequential(
+        #     layer_init(nn.Linear(3 * 17 * 17, 128)),
+        #     nn.ReLU()
+        # )
 
-    def get_value(self, x):
-        return self.critic(self.network(x))
 
     def get_action_and_value(self, x, action=None):
+        # 提取第0、5、10通道
+        selected_indices = [0, 5, 10]
+        agent_obs = x[:, selected_indices, :, :].reshape(-1, 3 * 17 * 17)
+        mask = np.ones(x.shape[1], dtype=bool)  
+        mask[selected_indices] = False            
+        x = x[:, mask, :, :]
+
         hidden = self.network(x)
+        # hidden_agent_location = self.agent_location(agent_obs)
+        hidden_agent_location = agent_obs
+        hidden = torch.cat([hidden, hidden_agent_location], axis=1)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
@@ -172,7 +182,17 @@ class Agent(nn.Module):
 
 
     def get_value(self, x):
-        return self.critic(self.network(x))
+        selected_indices = [0, 5, 10]
+        agent_obs = x[:, selected_indices, :, :].reshape(-1, 3 * 17 * 17)
+        mask = np.ones(x.shape[1], dtype=bool)  
+        mask[selected_indices] = False            
+        x = x[:, mask, :, :]
+
+        hidden = self.network(x)
+        # hidden_agent_location = self.agent_location(agent_obs)
+        hidden_agent_location = agent_obs
+        hidden = torch.cat([hidden, hidden_agent_location], axis=1)
+        return self.critic(hidden)
 
     # def get_action_and_value(self, x, action=None):
     #     hidden = self.network(x)
@@ -189,7 +209,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"r_new_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -248,10 +268,10 @@ if __name__ == "__main__":
     global_step = 0
     start_time = time.time()
     next_obs, _ = envs.reset(seed=args.seed)
-    if isinstance(next_obs, np.ndarray):
-        np.set_printoptions(threshold=np.inf)  
-        print("next_obs shape:", next_obs.shape)
-        print(next_obs)
+    # if isinstance(next_obs, np.ndarray):
+    #     np.set_printoptions(threshold=np.inf)  
+    #     print("next_obs shape:", next_obs.shape)
+    #     print(next_obs)
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
 
@@ -395,7 +415,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        if global_step % 180000 == 0:
+        if global_step % 100000 == 0:
             checkpoint_path = model_dir / f"checkpoint_step{global_step}.pt"
             torch.save({
                 'model': agent.state_dict(),
