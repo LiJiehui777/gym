@@ -48,25 +48,40 @@ mazes = {
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
-    "maze2": [
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0],
-        [0, 0, 0, -1, -1, -1, -1, 0, 0, 0, -1, -1, -1, -1, 0, 0, 0],
-        [0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0],
-        [0, 0, 0, -1, 0, 0, -1, -1, 0, -1, -1, 0, 0, -1, 0, 0, 0],
-        [0, 0, 0, -1, 0, 0, -1, 0, 0, 0, -1, 0, 0, -1, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -0, 0, 0],
-        [0, 0, 0, -1, 0, 0, -1, 0, 0, 0, -1, 0, 0, -1, 0, 0, 0],
-        [0, 0, 0, -1, 0, 0, -1, -1, 0, -1, -1, 0, 0, -1, -0, 0, 0],
-        [0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0],
-        [0, 0, 0, -1, -1, -1, -1, 0, 0, 0, -1, -1, -1, -1, 0, 0, -0],
-        [0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    ],
+    "maze2": np.stack([
+        # Channel 0: Agent position (初始为空，会在 reset 中设置)
+        np.zeros((17, 17), dtype=np.float32),
+        
+        # Channel 1: Coins (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        
+        # Channel 2: Obstacles (原迷宫障碍物)
+        np.array([
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ], dtype=np.float32),
+        
+        # Channel 3: Bombs (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        
+        # Channel 4: Last move (初始为空)
+        np.zeros((17, 17), dtype=np.float32)
+    ], axis=0),
 }
 
 # 每 20 轮，npc 会在固定位置掉落一定数量的金币，金币的数量可能是3、6等，暂时使用固定值3，后续会更新。
@@ -252,13 +267,13 @@ class GoldRushNew(gym.Env):
         self.last_move = 4
         self.agent_positions = [(0, 0), (16, 16)]
         self.last_positions = [(0, 0), (16, 16)]
+        maze_choice = random.choice(["maze1", "maze2"])
         self.maze = np.array(copy.deepcopy(mazes[self.maze_type]))
         # self.maze[0][0] = -2
         # self.maze[16][16] = -2
         self.maze[0, 0, 0] = 1  # palyer1
         if self.has_player2:
             self.maze[1, 16, 16] = 1  # palyer2
-        maze_choice = random.choice(["maze1", "maze2"])
         self.npc_coin_pos = npc_coin_positions[maze_choice]
         self._flush_npc()
         self._flush_coins()
@@ -304,7 +319,7 @@ class GoldRushNew(gym.Env):
             obs = self._get_obs_frame()
             self.historical_states = [obs for _ in range(self.stack_frame)]
         self.round += 1
-        if self.round % 3 == 1 and self.round != 1:
+        if self.round % 9 == 1 and self.round != 1:
             self._flush_coins()
 
         # rewards 目前就是吃到或者损失的金币数
@@ -312,7 +327,7 @@ class GoldRushNew(gym.Env):
         reward_coin = 0
         reward_bomb = 0
         reward_obstacle = 0
-        reward_step = -1  # 走一步就需要-1的惩罚
+        reward_step = -5  # 走一步就需要-1的惩罚
 
         done = False
         info = dict()  # gym 框架需要，暂时没用
@@ -333,10 +348,10 @@ class GoldRushNew(gym.Env):
         new_c = np.clip(c + moves[move][1], 0, 16)
 
         # 接近价值/步数最大的金币
-        old_target = self._distance_to_nearest_coin(r, c)
-        new_target = self._distance_to_nearest_coin(new_r, new_c)
-        if old_target and new_target and old_target[0] == new_target[0]:
-            rewards += (old_target[1] - new_target[1])
+        # old_target = self._distance_to_nearest_coin(r, c)
+        # new_target = self._distance_to_nearest_coin(new_r, new_c)
+        # if old_target and new_target and old_target[0] == new_target[0]:
+        #     rewards += (old_target[1] - new_target[1])
 
         # 只有新的位置是非障碍物和玩家才有用
         self.last_positions = self.agent_positions.copy()
@@ -359,14 +374,14 @@ class GoldRushNew(gym.Env):
                     self.bombs.remove((new_r, new_c))
             else:
                 if self.maze[1, new_r, new_c] > 0:  # 金币
-                    reward_coin = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
+                    reward_coin = self.maze[1, new_r, new_c] / self.steps_to_eat_coin
                     # rewards = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
                     self.steps_to_eat_coin = 0
                     self.maze[1, new_r, new_c] = 0
                     self.golds[agent_id] += rewards
                     self.coins.pop((new_r, new_c))
                 elif self.maze[3, new_r, new_c] == 1:  # 炸弹
-                    reward_bomb = -20
+                    reward_bomb = -40
                     # rewards = -20
                     self.maze[3, new_r, new_c] = 0
                     self.golds[agent_id] += rewards
@@ -376,7 +391,7 @@ class GoldRushNew(gym.Env):
 
             self.last_move = move 
         else:
-            reward_obstacle = -5
+            reward_obstacle = -50
             # rewards = -5
             self.last_move = 4
 
@@ -409,7 +424,6 @@ class GoldRushNew(gym.Env):
         if self.is_multi_frame:
             return self._get_obs(), rewards, done, False, info
         else:
-            a = self._get_obs_frame()
             return self._get_obs_frame(), rewards, done, False, info
         
     def display_info(self, agent_id: int):
@@ -457,21 +471,23 @@ class GoldRushNew(gym.Env):
         else:
             obs = np.stack([
                 self.maze[0],  # agent
-                self.maze[1] / 25,  # coins
+                self.maze[1],  # coins
                 self.maze[2],  # obstacles
                 self.maze[3],  # bombs
-                self.maze[4] / 5,
+                self.maze[4],
             ], axis=0)
-            return obs
-
-    # def _get_obs_frame_channel_agent(self) -> np.ndarray:
-    #     return self.maze[0].flatten().reshape(1, -1)
+            obs_min = obs.min() 
+            obs_max = obs.max() 
+            return (obs - obs_min) / (obs_max - obs_min + 1e-8)
 
     def _get_obs(self) -> np.ndarray:
         return np.vstack(self.historical_states)
 
-    # def _get_obs_channel_agent(self) -> np.ndarray:
-    #     return np.vstack(self.historical_agent_states)
+    def global_minmax_normalize(obs):
+        """将整个obs张量归一化到[0,1]范围"""
+        obs_min = obs.min() 
+        obs_max = obs.max() 
+        return (obs - obs_min) / (obs_max - obs_min + 1e-8)
     
     def _is_position_valid(self, r: int, c: int) -> bool:
         # 判断新的位置是否是非障碍物和玩家
