@@ -50,7 +50,7 @@ class Args:
     """the id of the environment"""
     total_timesteps: int = 100000000
     """total timesteps of the experiments"""
-    learning_rate: float = 2.5e-4
+    learning_rate: float = 2.5e-3
     """the learning rate of the optimizer"""
     num_envs: int = 8
     """the number of parallel game environments"""
@@ -58,13 +58,13 @@ class Args:
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
-    gamma: float = 0.99
+    gamma: float = 0.80
     """the discount factor gamma"""
     gae_lambda: float = 0.95
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 4
     """the number of mini-batches"""
-    update_epochs: int = 4
+    update_epochs: int = 10
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -72,7 +72,7 @@ class Args:
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.01
+    ent_coef: float = 0.05
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:1" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
