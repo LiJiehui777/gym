@@ -8,6 +8,7 @@ import pygame
 
 import gym
 from gym import spaces
+import math
 
 # 目前主要地图有两个，在单场比赛中，障碍物的位置不变，炸弹和金币的数量和位置会改变。
 # 其中 0表示非障碍物，-1表示障碍物。
@@ -180,6 +181,7 @@ class GoldRushNew(gym.Env):
         # 0: 上，1: 下，2: 左，3: 右，4: 不动。
         # self.action_space = spaces.MultiDiscrete([5, 5])
         self.action_space = spaces.Discrete(5)
+        self.steps_to_eat_coin = 0
 
         # 判断玩家2是否存在
         self.has_player2 = has_player2
@@ -210,7 +212,7 @@ class GoldRushNew(gym.Env):
 
         self.historical_states = []
         self.last_move = 4
-        self.num_bombs = 10
+        self.num_bombs = 20
 
         # 两个玩家各自的位置， [player1, player2]
         self.agent_positions: List[Tuple[int, int]] = [(0, 0), (16, 16)]
@@ -256,9 +258,12 @@ class GoldRushNew(gym.Env):
         self.maze[0, 0, 0] = 1  # palyer1
         if self.has_player2:
             self.maze[1, 16, 16] = 1  # palyer2
+        maze_choice = random.choice(["maze1", "maze2"])
+        self.npc_coin_pos = npc_coin_positions[maze_choice]
         self._flush_npc()
         self._flush_coins()
         self._flush_bomb()
+        self.steps_to_eat_coin = 0
 
         # Initialize historical states.
         obs = self._get_obs_frame()
@@ -279,6 +284,7 @@ class GoldRushNew(gym.Env):
         """
         agent_id = 0
         move = action
+        self.steps_to_eat_coin += 1
 
         # 更新地图
         # if self.turn == 0:
@@ -303,6 +309,10 @@ class GoldRushNew(gym.Env):
 
         # rewards 目前就是吃到或者损失的金币数
         rewards = 0
+        reward_coin = 0
+        reward_bomb = 0
+        reward_obstacle = 0
+        reward_step = -1  # 走一步就需要-1的惩罚
 
         done = False
         info = dict()  # gym 框架需要，暂时没用
@@ -326,7 +336,7 @@ class GoldRushNew(gym.Env):
         old_target = self._distance_to_nearest_coin(r, c)
         new_target = self._distance_to_nearest_coin(new_r, new_c)
         if old_target and new_target and old_target[0] == new_target[0]:
-            rewards += 0.1 * (old_target[1] - new_target[1])
+            rewards += (old_target[1] - new_target[1])
 
         # 只有新的位置是非障碍物和玩家才有用
         self.last_positions = self.agent_positions.copy()
@@ -349,23 +359,28 @@ class GoldRushNew(gym.Env):
                     self.bombs.remove((new_r, new_c))
             else:
                 if self.maze[1, new_r, new_c] > 0:  # 金币
-                    rewards = self.maze[1, new_r, new_c]
+                    reward_coin = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
+                    # rewards = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
+                    self.steps_to_eat_coin = 0
                     self.maze[1, new_r, new_c] = 0
                     self.golds[agent_id] += rewards
                     self.coins.pop((new_r, new_c))
                 elif self.maze[3, new_r, new_c] == 1:  # 炸弹
-                    rewards = -int(self.golds[agent_id] * self.penalty)
+                    reward_bomb = -20
+                    # rewards = -20
                     self.maze[3, new_r, new_c] = 0
                     self.golds[agent_id] += rewards
                     self.bombs.remove((new_r, new_c))
-                else:
-                    rewards = -1
+                # else:
+                #     rewards = -1
 
             self.last_move = move 
         else:
-            rewards = -3
+            reward_obstacle = -5
+            # rewards = -5
             self.last_move = 4
 
+        rewards = reward_bomb + reward_coin + reward_obstacle + reward_step
         # nearest_coin_dist = self._distance_to_nearest_coin(agent_id)
         # if nearest_coin_dist < 3:
         #     rewards += (1 - nearest_coin_dist / 32)
@@ -416,15 +431,17 @@ class GoldRushNew(gym.Env):
     def _distance_to_nearest_coin(self, r, c):
         r, c = r, c
         ratio = float('-inf')
+        result_dist = 0
         
         for coin_pos in self.coins:
             dist = abs(r - coin_pos[0]) + abs(c - coin_pos[1])  # 曼哈顿距离
             coin = self.maze[1, coin_pos[0], coin_pos[1]]
             if ratio < coin / dist:
                 ratio = coin / dist
+                result_dist = dist
                 location = (coin_pos[0], coin_pos[1])
         
-        return (location, ratio)
+        return [location, result_dist]
 
     def _get_obs_frame(self) -> np.ndarray:
         if self.has_player2:
@@ -487,6 +504,12 @@ class GoldRushNew(gym.Env):
                 cnt += 1
 
     def _flush_npc(self):
+        self.maze[1, :4, :] = 0
+        self.maze[1, 13:, :] = 0
+        self.maze[1, :, :4] = 0
+        self.maze[1, :, 13:] = 0
+        maze_choice = random.choice(["maze1", "maze2"])
+        self.npc_coin_pos = npc_coin_positions[maze_choice]
         for r, c in self.npc_coin_pos:
             if self._is_position_valid(r, c):
                 self.maze[1, r, c] = 3
