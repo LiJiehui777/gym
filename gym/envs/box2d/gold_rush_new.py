@@ -378,14 +378,15 @@ class GoldRushNew(gym.Env):
                     reward_coin = self.maze[1, new_r, new_c] / self.steps_to_eat_coin
                     # rewards = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
                     self.steps_to_eat_coin = 0
+                    self.golds[agent_id] += self.maze[1, new_r, new_c]
                     self.maze[1, new_r, new_c] = 0
-                    self.golds[agent_id] += rewards
                     self.coins.pop((new_r, new_c))
                 elif self.maze[3, new_r, new_c] == 1:  # 炸弹
                     reward_bomb = -20
+                    r = -int(self.golds[agent_id] * self.penalty)
                     # rewards = -20
                     self.maze[3, new_r, new_c] = 0
-                    self.golds[agent_id] += rewards
+                    self.golds[agent_id] += r
                     self.bombs.remove((new_r, new_c))
                 # else:
                 #     rewards = -1

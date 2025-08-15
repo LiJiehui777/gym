@@ -194,6 +194,39 @@ class Agent(nn.Module):
         half_size = view_size // 2
         y, x = agent_pos
         
+        y_start = y - half_size
+        y_end = y + half_size + 1
+        x_start = x - half_size
+        x_end = x + half_size + 1
+
+        
+        # 调整边界确保视野在7×7范围内
+        if y_start < 0:
+            y_end += -y_start  # 向下扩展
+            y_start = 0
+        elif y_end > 17:
+            y_start -= (y_end - 17)  # 向上扩展
+            y_end = 17
+        
+        if x_start < 0:
+            x_end += -x_start  # 向右扩展
+            x_start = 0
+        elif x_end > 17:
+            x_start -= (x_end - 17)  # 向左扩展
+            x_end = 17
+        
+        local_view = full_tensor[:, :,  y_start:y_end, x_start:x_end]
+        
+        return local_view
+
+    
+    def get_partial_view(self, full_tensor, view_size=7):
+        # 从第0通道获取agent位置
+        agent_pos = self.get_agent_position(full_tensor[0])
+        
+        half_size = view_size // 2
+        y, x = agent_pos
+        
         # 创建空的局部视图，初始填充0
         local_view = torch.full((full_tensor.size(0), full_tensor.size(1), view_size, view_size), 0, 
                             dtype=full_tensor.dtype, device=full_tensor.device)
@@ -295,7 +328,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
@@ -469,7 +502,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        if global_step % 720000 == 0:
+        if global_step % 741600 == 0:
             checkpoint_path = model_dir / f"checkpoint_step{global_step}.pt"
             torch.save({
                 'model': agent.state_dict(),
