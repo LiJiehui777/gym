@@ -263,7 +263,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"256_switch_map_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"256_no_switch_map_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -469,7 +469,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        if global_step % 100000 == 0:
+        if global_step % 720000 == 0:
             checkpoint_path = model_dir / f"checkpoint_step{global_step}.pt"
             torch.save({
                 'model': agent.state_dict(),

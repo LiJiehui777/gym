@@ -259,7 +259,6 @@ class GoldRushNew(gym.Env):
         """
         重置环境
         """
-        print("agent_gold: ", self.golds[0])
         self.golds = [0, 0]
         self.coins.clear()
         self.bombs.clear()
@@ -269,7 +268,7 @@ class GoldRushNew(gym.Env):
         self.agent_positions = [(0, 0), (16, 16)]
         self.last_positions = [(0, 0), (16, 16)]
         maze_choice = random.choice(["maze1", "maze2"])
-        self.maze = np.array(copy.deepcopy(mazes[maze_choice]))
+        self.maze = np.array(copy.deepcopy(mazes[self.maze_type]))
         # self.maze[0][0] = -2
         # self.maze[16][16] = -2
         self.maze[0, 0, 0] = 1  # palyer1
@@ -405,6 +404,7 @@ class GoldRushNew(gym.Env):
 
         if self.round == self.max_rounds:
             done = True
+            print("coins: ", self.golds[agent_id])
             # score, opponent_score = self.golds[agent_id], self.golds[1 - agent_id]
             # rewards = 10000 if score > opponent_score else -10000
 
@@ -496,6 +496,9 @@ class GoldRushNew(gym.Env):
                 and self.maze[0, r, c] != 1 
             )
         return valid
+
+    def _get_coins(self):
+        return self.golds[0]
 
 # 以下方法在有player2时需要更改
     def _flush_coins(self):
