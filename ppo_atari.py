@@ -122,35 +122,53 @@ class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
         self.network = nn.Sequential(
-            # 第一层卷积：5×17×17 → 32×15×15（无padding）
+            # 第一层卷积：5×17×17 → 32×17×17（无padding）
             # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
             layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
             nn.ReLU(),
-            # 第二层卷积：32×15×15 → 64×13×13（无padding）
+            # 第二层卷积：32×17×17 → 64×17×17（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
             nn.ReLU(),
-            # 第一次池化：64×13×13 → 64×6×6（2×2池化）
+            # 第一次池化：64×17×17 → 64×8×8（2×2池化）
             nn.MaxPool2d(2, 2),
-            # 第三层卷积：64×6×6 → 64×4×4（无padding）
+            # 第三层卷积：64×8×8 → 64×6×6（无padding）
             layer_init(nn.Conv2d(64, 64, 3, stride=1)),
             nn.ReLU(),
-            # 第二次池化（可选，进一步压缩尺寸）：64×4×4 → 64×2×2
+            # 第二次池化（可选，进一步压缩尺寸）：64×6×6 → 64×3×3
             nn.MaxPool2d(2, 2),
-            # 展平：64×2×2 = 256
+            # 展平：64×3×3 = 576
             nn.Flatten(),
-            # 修正线性层输入维度（256 → 256）
-            layer_init(nn.Linear(64 * 3 * 3, 17 * 17)),
+            # 修正线性层输入维度（576 → 512）
+            layer_init(nn.Linear(64 * 3 * 3, 512)),
             nn.ReLU(),
         )
+
+        self.partial_view = nn.Sequential(
+            # 第一层卷积：12×7×7 → 32×7×7（无padding）
+            # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
+            layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
+            nn.ReLU(),
+            # 第二层卷积：32×7×7 → 64×7×7（无padding）
+            layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
+            nn.ReLU(),
+            # 第一次池化：64×7×7 → 64×3×3（2×2池化）
+            nn.MaxPool2d(2, 2),
+            # 展平：64×3×3 = 256
+            nn.Flatten(),
+            # 修正线性层输入维度（576 → 512）
+            layer_init(nn.Linear(64 * 3 * 3, 512)),
+            nn.ReLU(),
+        )
+
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(17 * 17 * 4, 256)),
+            layer_init(nn.Linear(512 * 2, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 128)),
             nn.ReLU(),
             layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         )
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(17 * 17 * 4, 256)),
+            layer_init(nn.Linear(512 * 2, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 128 )),
             nn.ReLU(),
@@ -162,18 +180,58 @@ class Agent(nn.Module):
         # )
 
 
-    def get_action_and_value(self, x, action=None):
-        # 提取第0、5、10通道
-        selected_indices = [0, 5, 10]
-        agent_obs = x[:, selected_indices, :, :].reshape(-1, 3 * 17 * 17)
-        mask = np.ones(x.shape[1], dtype=bool)  
-        mask[selected_indices] = False            
-        x = x[:, mask, :, :]
+    def get_agent_position(self, agent_channel):
+        """从第0个通道提取agent的位置坐标"""
+        agent_channel = agent_channel.cpu()
+        positions = np.where(agent_channel > 0)
+        return (positions[0][0], positions[1][0]) 
 
-        hidden = self.network(x)
-        # hidden_agent_location = self.agent_location(agent_obs)
-        hidden_agent_location = agent_obs
-        hidden = torch.cat([hidden, hidden_agent_location], axis=1)
+    
+    def get_partial_view(self, full_tensor, view_size=7):
+        # 从第0通道获取agent位置
+        agent_pos = self.get_agent_position(full_tensor[0])
+        
+        half_size = view_size // 2
+        y, x = agent_pos
+        
+        # 创建空的局部视图，初始填充0
+        local_view = torch.full((full_tensor.size(0), full_tensor.size(1), view_size, view_size), 0, 
+                            dtype=full_tensor.dtype, device=full_tensor.device)
+        
+        # 计算地图上的实际范围
+        y_start_map = max(0, y - half_size)
+        y_end_map = min(17, y + half_size + 1)
+        x_start_map = max(0, x - half_size)
+        x_end_map = min(17, x + half_size + 1)
+        
+        # 计算局部视图中的对应范围
+        y_start_local = half_size - (y - y_start_map)
+        y_end_local = half_size + (y_end_map - y)
+        x_start_local = half_size - (x - x_start_map)
+        x_end_local = half_size + (x_end_map - x)
+        
+        local_view[:, :, y_start_local:y_end_local, x_start_local:x_end_local] = full_tensor[:, :, y_start_map:y_end_map, x_start_map:x_end_map]
+
+        return local_view
+
+    
+    def get_environment_tensor(self, full_tensor):
+        # 提取第0、5、10通道
+        # 去除位置编码信息
+        selected_indices = [0, 5, 10]  
+        mask = np.ones(full_tensor.shape[1], dtype=bool) 
+        mask[selected_indices] = False            
+        full_tensor = full_tensor[:, mask, :, :]
+        return full_tensor
+
+
+    def get_action_and_value(self, x, action=None):
+        global_obs = self.get_environment_tensor(x)
+        partial_obs = self.get_environment_tensor(self.get_partial_view(x))
+        global_hidden = self.network(global_obs)
+        partial_hidden = self.partial_view(partial_obs)
+
+        hidden = torch.cat([global_hidden, partial_hidden], axis=1)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
@@ -182,16 +240,12 @@ class Agent(nn.Module):
 
 
     def get_value(self, x):
-        selected_indices = [0, 5, 10]
-        agent_obs = x[:, selected_indices, :, :].reshape(-1, 3 * 17 * 17)
-        mask = np.ones(x.shape[1], dtype=bool)  
-        mask[selected_indices] = False            
-        x = x[:, mask, :, :]
+        global_obs = self.get_environment_tensor(x)
+        partial_obs = self.get_environment_tensor(self.get_partial_view(x))
+        global_hidden = self.network(global_obs)
+        partial_hidden = self.partial_view(partial_obs)
 
-        hidden = self.network(x)
-        # hidden_agent_location = self.agent_location(agent_obs)
-        hidden_agent_location = agent_obs
-        hidden = torch.cat([hidden, hidden_agent_location], axis=1)
+        hidden = torch.cat([global_hidden, partial_hidden], axis=1)
         return self.critic(hidden)
 
     # def get_action_and_value(self, x, action=None):
@@ -209,7 +263,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"256_flushmap_noratio_newest_steps_to_eat_coins_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"256_switch_map_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -241,7 +295,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:2" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
