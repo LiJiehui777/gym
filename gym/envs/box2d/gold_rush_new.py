@@ -327,7 +327,7 @@ class GoldRushNew(gym.Env):
         reward_coin = 0
         reward_bomb = 0
         reward_obstacle = 0
-        reward_step = -5  # 走一步就需要-1的惩罚
+        reward_step = -1  # 走一步就需要-1的惩罚
 
         done = False
         info = dict()  # gym 框架需要，暂时没用
@@ -381,7 +381,7 @@ class GoldRushNew(gym.Env):
                     self.golds[agent_id] += rewards
                     self.coins.pop((new_r, new_c))
                 elif self.maze[3, new_r, new_c] == 1:  # 炸弹
-                    reward_bomb = -40
+                    reward_bomb = -20
                     # rewards = -20
                     self.maze[3, new_r, new_c] = 0
                     self.golds[agent_id] += rewards
@@ -391,7 +391,7 @@ class GoldRushNew(gym.Env):
 
             self.last_move = move 
         else:
-            reward_obstacle = -50
+            reward_obstacle = -10
             # rewards = -5
             self.last_move = 4
 
