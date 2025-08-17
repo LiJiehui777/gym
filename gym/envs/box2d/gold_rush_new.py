@@ -44,7 +44,7 @@ mazes = {
         # Channel 3: Bombs (初始为空)
         np.zeros((17, 17), dtype=np.float32),
         
-        # Channel 4: Last move (初始为空)
+        # Channel 4: Visited_map (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -79,7 +79,7 @@ mazes = {
         # Channel 3: Bombs (初始为空)
         np.zeros((17, 17), dtype=np.float32),
         
-        # Channel 4: Last move (初始为空)
+        # Channel 4: Visited_map (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 }
@@ -272,6 +272,7 @@ class GoldRushNew(gym.Env):
         # self.maze[0][0] = -2
         # self.maze[16][16] = -2
         self.maze[0, 0, 0] = 1  # palyer1
+        self.maze[4, 0, 0] = 1
         if self.has_player2:
             self.maze[1, 16, 16] = 1  # palyer2
         self.npc_coin_pos = npc_coin_positions[maze_choice]
@@ -316,6 +317,10 @@ class GoldRushNew(gym.Env):
             # 每20个回合会有 npc 随机掉落金币
             self._flush_npc()
             self._flush_bomb()
+
+            # 更新player的位置信息
+            self._flush_agent_location()
+
             obs = self._get_obs_frame()
             self.historical_states = [obs for _ in range(self.stack_frame)]
         self.round += 1
@@ -335,23 +340,15 @@ class GoldRushNew(gym.Env):
         # 对应 [0, 4] 在地图中的变化，第一个元素是行的变化，第二个是列的变化
         moves = [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0)]
 
-        # 记录上一步的旧信息
-        if self.has_player2:
-            r, c = self.last_positions[agent_id]
-            self.maze[5, r, c] = 0
-        else:
-            r, c = self.last_positions[agent_id]
-            self.maze[4, r, c] = 0
-
         r, c = self.agent_positions[agent_id]
         new_r = np.clip(r + moves[move][0], 0, 16)
         new_c = np.clip(c + moves[move][1], 0, 16)
 
         # 接近价值/步数最大的金币
-        # old_target = self._distance_to_nearest_coin(r, c)
-        # new_target = self._distance_to_nearest_coin(new_r, new_c)
-        # if old_target and new_target and old_target[0] == new_target[0]:
-        #     rewards += (old_target[1] - new_target[1])
+        old_target = self._distance_to_nearest_coin(r, c)
+        new_target = self._distance_to_nearest_coin(new_r, new_c)
+        if old_target and new_target and old_target[0] == new_target[0]:
+            rewards += (old_target[1] - new_target[1])
 
         # 只有新的位置是非障碍物和玩家才有用
         self.last_positions = self.agent_positions.copy()
@@ -362,6 +359,10 @@ class GoldRushNew(gym.Env):
             # 设置新位置
             self.maze[agent_id, new_r, new_c] = 1
             self.agent_positions[agent_id] = (new_r, new_c)
+
+            # 更新player走过的位置信息
+            self.maze[4, new_r, new_c] = 1
+
             # 如果新的位置是金币或者炸弹，该进行相应的处理
             if self.has_player2:
                 if self.maze[2, new_r, new_c] > 0:  # 金币
@@ -377,23 +378,22 @@ class GoldRushNew(gym.Env):
                     reward_coin = self.maze[1, new_r, new_c] / self.steps_to_eat_coin
                     # rewards = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
                     self.steps_to_eat_coin = 0
+                    self.golds[agent_id] += self.maze[1, new_r, new_c]
                     self.maze[1, new_r, new_c] = 0
-                    self.golds[agent_id] += rewards
                     self.coins.pop((new_r, new_c))
                 elif self.maze[3, new_r, new_c] == 1:  # 炸弹
                     reward_bomb = -20
+                    r = -int(self.golds[agent_id] * self.penalty)
                     # rewards = -20
                     self.maze[3, new_r, new_c] = 0
-                    self.golds[agent_id] += rewards
+                    self.golds[agent_id] += r
                     self.bombs.remove((new_r, new_c))
                 # else:
                 #     rewards = -1
 
-            self.last_move = move 
         else:
             reward_obstacle = -10
             # rewards = -5
-            self.last_move = 4
 
         rewards = reward_bomb + reward_coin + reward_obstacle + reward_step
         # nearest_coin_dist = self._distance_to_nearest_coin(agent_id)
@@ -403,16 +403,9 @@ class GoldRushNew(gym.Env):
         #     rewards += 0.2 * (1 - nearest_coin_dist / 32)
         # rewards += 0.5 * (1 - nearest_coin_dist)
 
-        # 更新新的上一步信息
-        if self.has_player2:
-            r, c = self.last_positions[agent_id]
-            self.maze[5, old_r, old_c] = self.last_move + 1
-        else:
-            r, c = self.last_positions[agent_id]
-            self.maze[4, old_r, old_c] = self.last_move + 1
-
         if self.round == self.max_rounds:
             done = True
+            print("coins: ", self.golds[agent_id])
             # score, opponent_score = self.golds[agent_id], self.golds[1 - agent_id]
             # rewards = 10000 if score > opponent_score else -10000
 
@@ -470,11 +463,11 @@ class GoldRushNew(gym.Env):
             return obs
         else:
             obs = np.stack([
-                self.maze[0],  # agent
+                self.maze[0],
                 self.maze[1],  # coins
                 self.maze[2],  # obstacles
                 self.maze[3],  # bombs
-                self.maze[4],
+                self.maze[4],  # visited_map
             ], axis=0)
             obs_min = obs.min() 
             obs_max = obs.max() 
@@ -504,6 +497,9 @@ class GoldRushNew(gym.Env):
                 and self.maze[0, r, c] != 1 
             )
         return valid
+
+    def _get_coins(self):
+        return self.golds[0]
 
 # 以下方法在有player2时需要更改
     def _flush_coins(self):
@@ -541,6 +537,12 @@ class GoldRushNew(gym.Env):
                 self.bombs.add((r, c))
                 self.maze[3, r, c] = 1
                 cnt += 1
+
+    def _flush_agent_location(self):
+        # 重置player走过的位置信息 
+        self.maze[4] = 0
+        r, c = self.agent_positions[0] 
+        self.maze[4, r, c] = 1
 
     def render(self):
         """
