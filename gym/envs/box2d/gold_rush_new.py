@@ -345,10 +345,10 @@ class GoldRushNew(gym.Env):
         new_c = np.clip(c + moves[move][1], 0, 16)
 
         # 接近价值/步数最大的金币
-        # old_target = self._distance_to_nearest_coin(r, c)
-        # new_target = self._distance_to_nearest_coin(new_r, new_c)
-        # if old_target and new_target and old_target[0] == new_target[0]:
-        #     rewards += (old_target[1] - new_target[1])
+        old_target = self._distance_to_nearest_coin(r, c)
+        new_target = self._distance_to_nearest_coin(new_r, new_c)
+        if old_target and new_target and old_target[0] == new_target[0]:
+            rewards += (old_target[1] - new_target[1])
 
         # 只有新的位置是非障碍物和玩家才有用
         self.last_positions = self.agent_positions.copy()
