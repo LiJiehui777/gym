@@ -82,6 +82,41 @@ mazes = {
         # Channel 4: Visited_map (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
+
+    "maze3": np.stack([
+        # Channel 0: Agent position (初始为空，会在 reset 中设置)
+        np.zeros((17, 17), dtype=np.float32),
+        
+        # Channel 1: Coins (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        
+        # Channel 2: Obstacles (原迷宫障碍物)
+        np.array([
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0],
+            [0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0],
+            [0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0],
+            [0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0],
+            [0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0],
+            [0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0],
+            [0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        ], dtype=np.float32),
+        
+        # Channel 3: Bombs (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        
+        # Channel 4: Last move (初始为空)
+        np.zeros((17, 17), dtype=np.float32)
+    ], axis=0),
 }
 
 # 每 20 轮，npc 会在固定位置掉落一定数量的金币，金币的数量可能是3、6等，暂时使用固定值3，后续会更新。
@@ -245,6 +280,8 @@ class GoldRushNew(gym.Env):
         # 吃到炸弹后会损失的金币的比例，目前观测是 0.1，但是具体的值需要到初赛时才会公布。
         self.penalty = 0.1
 
+        self.decay_ratio = 0.1
+
         self.round = 1  # 当前是第几回合
         self.turn = 0  # 当前是哪个玩家，0: player1, 1: player2
 
@@ -267,15 +304,16 @@ class GoldRushNew(gym.Env):
         self.last_move = 4
         self.agent_positions = [(0, 0), (16, 16)]
         self.last_positions = [(0, 0), (16, 16)]
-        maze_choice = random.choice(["maze1", "maze2"])
-        self.maze = np.array(copy.deepcopy(mazes[self.maze_type]))
+        maze_choice = random.choice(["maze1", "maze2", "maze3"])
+        npc_choice = random.choice(["maze1", "maze2"])
+        self.maze = np.array(copy.deepcopy(mazes[maze_choice]))
         # self.maze[0][0] = -2
         # self.maze[16][16] = -2
         self.maze[0, 0, 0] = 1  # palyer1
         self.maze[4, 0, 0] = 1
         if self.has_player2:
             self.maze[1, 16, 16] = 1  # palyer2
-        self.npc_coin_pos = npc_coin_positions[maze_choice]
+        self.npc_coin_pos = npc_coin_positions[npc_choice]
         self._flush_npc()
         self._flush_coins()
         self._flush_bomb()
@@ -319,7 +357,7 @@ class GoldRushNew(gym.Env):
             self._flush_bomb()
 
             # 更新player的位置信息
-            self._flush_agent_location()
+            # self._flush_agent_location()
 
             obs = self._get_obs_frame()
             self.historical_states = [obs for _ in range(self.stack_frame)]
@@ -350,9 +388,10 @@ class GoldRushNew(gym.Env):
         if old_target and new_target and old_target[0] == new_target[0]:
             rewards += (old_target[1] - new_target[1])
 
+        # 乘上衰减率
+        self.maze[4] *= (1 - self.decay_ratio)
+
         # 只有新的位置是非障碍物和玩家才有用
-        self.last_positions = self.agent_positions.copy()
-        old_r, old_c = self.last_positions[agent_id]
         if self._is_position_valid(new_r, new_c):
             # 清除旧位置
             self.maze[agent_id, r, c] = 0
@@ -392,6 +431,7 @@ class GoldRushNew(gym.Env):
                 #     rewards = -1
 
         else:
+            self.maze[4, r, c] = 1
             reward_obstacle = -10
             # rewards = -5
 
@@ -507,7 +547,8 @@ class GoldRushNew(gym.Env):
         在每回合开始前更新地图中的金币
         """
         cnt = 0
-        while cnt < 1:
+        num = random.randint(1, 3)
+        while cnt < num:
             r, c = random.randint(4, 12), random.randint(4, 12)
             if self._is_position_valid(r, c) and self.maze[3, r, c] == 0:
                 value = random.randint(3, 25)
@@ -520,6 +561,12 @@ class GoldRushNew(gym.Env):
         self.maze[1, 13:, :] = 0
         self.maze[1, :, :4] = 0
         self.maze[1, :, 13:] = 0
+        coins_to_delete = [
+            (i, j) for (i, j) in self.coins.keys() 
+                if i < 4 or i >= 13 or j < 4 or j >= 13  # 匹配相同的边界条件
+        ]
+        for coord in coins_to_delete:
+            del self.coins[coord]
         maze_choice = random.choice(["maze1", "maze2"])
         self.npc_coin_pos = npc_coin_positions[maze_choice]
         for r, c in self.npc_coin_pos:

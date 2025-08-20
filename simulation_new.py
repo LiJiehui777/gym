@@ -4,8 +4,9 @@ from torch.distributions.categorical import Categorical
 import numpy as np
 import gym
 import time, random
+from typing import List
 from loguru import logger
-import AStar
+# import AStar
 
 
 class PPOModelWrapper:
@@ -26,33 +27,57 @@ class PPOModelWrapper:
                 super().__init__()
                 # Network部分（堆叠三帧）
                 self.network = nn.Sequential(
-                    self.layer_init(nn.Conv2d(15, 32, 3, stride=1)),
+                    # 第一层卷积：5×17×17 → 32×17×17（无padding）
+                    # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
+                    self.layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
                     nn.ReLU(),
-                    self.layer_init(nn.Conv2d(32, 64, 3, stride=1)),
+                    # 第二层卷积：32×17×17 → 64×17×17（无padding）
+                    self.layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
                     nn.ReLU(),
+                    # 第一次池化：64×17×17 → 64×8×8（2×2池化）
                     nn.MaxPool2d(2, 2),
+                    # 第三层卷积：64×8×8 → 64×6×6（无padding）
                     self.layer_init(nn.Conv2d(64, 64, 3, stride=1)),
                     nn.ReLU(),
+                    # 第二次池化（可选，进一步压缩尺寸）：64×6×6 → 64×3×3
                     nn.MaxPool2d(2, 2),
+                    # 展平：64×3×3 = 576
                     nn.Flatten(),
-                    self.layer_init(nn.Linear(64 * 2 * 2, 128)),
+                    # 修正线性层输入维度（576 → 512）
+                    self.layer_init(nn.Linear(64 * 3 * 3, 512)),
                     nn.ReLU(),
-                )
-                # Actor部分
-                self.actor = nn.Sequential(
-                    self.layer_init(nn.Linear(128, 64)),
-                    nn.ReLU(),
-                    self.layer_init(nn.Linear(64, 32)),
-                    nn.ReLU(),
-                    self.layer_init(nn.Linear(32, 5), std=0.01),
                 )
 
+                self.partial_view = nn.Sequential(
+                    # 第一层卷积：12×7×7 → 32×7×7（无padding）
+                    # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
+                    self.layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
+                    nn.ReLU(),
+                    # 第二层卷积：32×7×7 → 64×7×7（无padding）
+                    self.layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
+                    nn.ReLU(),
+                    # 第一次池化：64×7×7 → 64×3×3（2×2池化）
+                    nn.MaxPool2d(2, 2),
+                    # 展平：64×3×3 = 256
+                    nn.Flatten(),
+                    # 修正线性层输入维度（576 → 512）
+                    self.layer_init(nn.Linear(64 * 3 * 3, 512)),
+                    nn.ReLU(),
+                )
+
+                self.actor = nn.Sequential(
+                    self.layer_init(nn.Linear(512 * 2, 256)),
+                    nn.ReLU(),
+                    self.layer_init(nn.Linear(256, 128)),
+                    nn.ReLU(),
+                    self.layer_init(nn.Linear(128, 5), std=0.01)
+                )
                 self.critic = nn.Sequential(
-                    self.layer_init(nn.Linear(128, 64)),
+                    self.layer_init(nn.Linear(512 * 2, 256)),
                     nn.ReLU(),
-                    self.layer_init(nn.Linear(64, 16)),
+                    self.layer_init(nn.Linear(256, 128 )),
                     nn.ReLU(),
-                    self.layer_init(nn.Linear(16, 1), std=1),
+                    self.layer_init(nn.Linear(128, 1), std=1)
                 )
 
             def layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
@@ -88,7 +113,7 @@ class Player:
         if model_path:
             self.model = PPOModelWrapper(model_path)
 
-    def MoveDecision(self, grid: list[list[int]], gold: int, gold_2: int) -> list[int]:
+    def MoveDecision(self, grid: List[List[int]], gold: int, gold_2: int) -> List[int]:
         self.gold1 = gold
         self.gold2 = gold_2
 
@@ -160,20 +185,12 @@ class Player:
         elif new_obs[3, r_new, c_new] == 1:
             new_obs[3, r_new, c_new] = 0
 
-        # 处理上一步的动作
-        if self.last_location:
-            r1, c1 = self.last_location
-            new_obs[4, r1, c1] = 0
-        new_obs[4, r, c] = action + 1
-        self.last_location = [r, c]
-
         return new_obs
 
     def _normalize_observation(self, obs):
-        normalized = np.copy(obs)
-        normalized[1] /= 25.0  # 金币值归一化
-        normalized[4] /= 5.0  # 历史动作归一化
-        return normalized
+        obs_min = obs.min() 
+        obs_max = obs.max() 
+        return (obs - obs_min) / (obs_max - obs_min + 1e-8)
 
     def _preprocess_grid(self, grid):
         # 原始输入格式：[5, 17, 17]的numpy数组
@@ -204,9 +221,9 @@ class Player:
 
 if __name__ == "__main__":
     player = Player(
-        "./runs/GoldRushNew-v0__ppo_atari__1__1754896481/models/checkpoint_step8100000.pt"
+        "./runs/256_no_switch_map_GoldRushNew-v0__ppo_atari__1__1755431853/models/checkpoint_step96000000.pt"
     )
-    aStarPlayer = AStar.Player()
+    # aStarPlayer = AStar.Player()
     env = gym.make("GoldRushNew-v0", maze="maze1", stack_frame=3)
     obs, _ = env.reset()
     env.render()
@@ -216,10 +233,10 @@ if __name__ == "__main__":
     while not done:
         grid, golds = env.display_info(agent_id=0)
         # print(grid)
-        # moves1 = player.MoveDecision(grid.tolist(), golds[0], golds[1])
-        moves1 = aStarPlayer.MoveDecision(
-            grid.astype(np.int32).tolist(), golds[0], golds[1]
-        )
+        moves1 = player.MoveDecision(grid.tolist(), golds[0], golds[1])
+        # moves1 = aStarPlayer.MoveDecision(
+        #     grid.astype(np.int32).tolist(), golds[0], golds[1]
+        # )
 
         for i in range(3):
             logger.info(f"Player 1: round {round} | move = {moves1[i]}")
