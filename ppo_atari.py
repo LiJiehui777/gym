@@ -9,6 +9,7 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import tyro
 from torch.distributions.categorical import Categorical
@@ -118,29 +119,50 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        self.conv1 = layer_init(nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1))
+        self.conv2 = layer_init(nn.Conv2d(out_channels, out_channels, 3, padding=1))
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                layer_init(nn.Conv2d(in_channels, out_channels, 1, stride=stride)),
+            )
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = self.conv2(out)
+        out += self.shortcut(x)
+        return F.relu(out)
+
+
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
         self.network = nn.Sequential(
-            # 第一层卷积：5×17×17 → 32×15×15（无padding）
-            # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
-            layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
+            # 输入: 12×17×17
+            layer_init(nn.Conv2d(12, 64, 3, padding=1)),  # 64×17×17
             nn.ReLU(),
-            # 第二层卷积：32×15×15 → 64×13×13（无padding）
-            layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
+            
+            # 残差块组1 (保持尺寸)
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
+            
+            # 下采样路径
+            nn.MaxPool2d(2, 2),  # 64×8×8
+            ResidualBlock(64, 128, stride=1),
+            ResidualBlock(128, 128),
+            
+            # 中间处理
+            nn.MaxPool2d(2, 2),  # 128×4×4
+            ResidualBlock(128, 256, stride=1),
+            ResidualBlock(256, 256),
+
+            nn.Flatten(),  # 4096
+            layer_init(nn.Linear(4096, 512)),
             nn.ReLU(),
-            # 第一次池化：64×13×13 → 64×6×6（2×2池化）
-            nn.MaxPool2d(2, 2),
-            # 第三层卷积：64×6×6 → 64×4×4（无padding）
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-            nn.ReLU(),
-            # 第二次池化（可选，进一步压缩尺寸）：64×4×4 → 64×2×2
-            nn.MaxPool2d(2, 2),
-            # 展平：64×2×2 = 256
-            nn.Flatten(),
-            # 修正线性层输入维度（256 → 256）
-            layer_init(nn.Linear(64 * 3 * 3, 17 * 17)),
-            nn.ReLU(),
+            layer_init(nn.Linear(512, 17 * 17)),
         )
         self.actor = nn.Sequential(
             layer_init(nn.Linear(17 * 17 * 4, 256)),

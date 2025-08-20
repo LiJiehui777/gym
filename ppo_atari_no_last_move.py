@@ -129,10 +129,18 @@ class Agent(nn.Module):
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
             nn.ReLU(),
+
+            layer_init(nn.Conv2d(64, 128, 3, stride=1, padding=1)),
+            nn.ReLU(),
+
             # 第一次池化：64×13×13 → 64×6×6（2×2池化）
             nn.MaxPool2d(2, 2),
             # 第三层卷积：64×6×6 → 64×4×4（无padding）
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+
+            layer_init(nn.Conv2d(128, 128, 3, stride=1, padding=1)),
+            nn.ReLU(),
+
+            layer_init(nn.Conv2d(128, 64, 3, stride=1)),
             nn.ReLU(),
             # 第二次池化（可选，进一步压缩尺寸）：64×4×4 → 64×2×2
             nn.MaxPool2d(2, 2),
@@ -209,7 +217,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"256_switch_map_no_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"256_switch_map_no_decay_no_last_move_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -241,7 +249,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
