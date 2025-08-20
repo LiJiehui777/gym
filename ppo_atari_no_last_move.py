@@ -124,7 +124,7 @@ class Agent(nn.Module):
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×15×15（无padding）
             # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
-            layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
+            layer_init(nn.Conv2d(9, 32, 3, stride=1, padding=1)),
             nn.ReLU(),
             # 第二层卷积：32×15×15 → 64×13×13（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:2" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(

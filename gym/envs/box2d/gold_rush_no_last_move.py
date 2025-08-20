@@ -43,9 +43,7 @@ mazes = {
         
         # Channel 3: Bombs (初始为空)
         np.zeros((17, 17), dtype=np.float32),
-        
-        # Channel 4: Last move (初始为空)
-        np.zeros((17, 17), dtype=np.float32)
+    
     ], axis=0),
 
     "maze2": np.stack([
@@ -79,8 +77,6 @@ mazes = {
         # Channel 3: Bombs (初始为空)
         np.zeros((17, 17), dtype=np.float32),
         
-        # Channel 4: Last move (初始为空)
-        np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
     # "maze3": np.stack([
@@ -147,8 +143,6 @@ mazes = {
         # Channel 3: Bombs (初始为空)
         np.zeros((17, 17), dtype=np.float32),
         
-        # Channel 4: Last move (初始为空)
-        np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 }
 
@@ -290,7 +284,7 @@ class GoldRushNew(gym.Env):
             self.observation_space = spaces.Box(
                 low=0, 
                 high=255, 
-                shape=(5 * self.stack_frame, 17, 17), 
+                shape=(4 * self.stack_frame, 17, 17), 
                 dtype=np.float32
             )   
 
@@ -406,14 +400,6 @@ class GoldRushNew(gym.Env):
         # 对应 [0, 4] 在地图中的变化，第一个元素是行的变化，第二个是列的变化
         moves = [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0)]
 
-        # 记录上一步的旧信息
-        if self.has_player2:
-            r, c = self.last_positions[agent_id]
-            self.maze[5, r, c] = 0
-        else:
-            r, c = self.last_positions[agent_id]
-            self.maze[4, r, c] = 0
-
         r, c = self.agent_positions[agent_id]
         new_r = np.clip(r + moves[move][0], 0, 16)
         new_c = np.clip(c + moves[move][1], 0, 16)
@@ -473,14 +459,6 @@ class GoldRushNew(gym.Env):
         # else:
         #     rewards += 0.2 * (1 - nearest_coin_dist / 32)
         # rewards += 0.5 * (1 - nearest_coin_dist)
-
-        # 更新新的上一步信息
-        if self.has_player2:
-            r, c = self.last_positions[agent_id]
-            self.maze[5, old_r, old_c] = self.last_move + 1
-        else:
-            r, c = self.last_positions[agent_id]
-            self.maze[4, old_r, old_c] = self.last_move + 1
 
         if self.round == self.max_rounds:
             done = True
@@ -546,7 +524,6 @@ class GoldRushNew(gym.Env):
                 self.maze[1],  # coins
                 self.maze[2],  # obstacles
                 self.maze[3],  # bombs
-                self.maze[4],
             ], axis=0)
             obs_min = obs.min() 
             obs_max = obs.max() 
