@@ -180,12 +180,12 @@ class Agent(nn.Module):
         # )
 
 
-    def get_agent_position(self, agent_channel):
-        """从第0个通道提取agent的位置坐标"""
-        agent_channel = agent_channel.cpu()
-        positions = np.where(agent_channel > 0)
-        return (positions[0][0], positions[1][0]) 
-
+    def _get_batch_positions(self, agent_channel):
+        flat_pos = torch.argmax(agent_channel.flatten(start_dim=1), dim=1)
+        return torch.stack([
+            flat_pos // agent_channel.size(2),  # y
+            flat_pos % agent_channel.size(2)     # x
+        ], dim=1)
     
     # def get_partial_view(self, full_tensor, view_size=7):
     #     # 从第0通道获取agent位置
@@ -221,41 +221,56 @@ class Agent(nn.Module):
 
     
     def get_partial_view(self, full_tensor, view_size=7):
-        # 从第0通道获取agent位置
-        agent_pos = self.get_agent_position(full_tensor[0])
+        device = full_tensor.device
+        batch_size, C, H, W = full_tensor.shape
+        half = view_size // 2
+
+        # 向量化获取所有智能体位置 [batch_size, 2]
+        agent_pos = self._get_batch_positions(full_tensor[:, 10])  # 假设第10通道是位置
+
+        # 计算地图上的范围 [batch_size, 4]
+        ranges = torch.stack([
+            torch.clamp(agent_pos[:, 0] - half, 0),          # y_start_map
+            torch.clamp(agent_pos[:, 0] + half + 1, max=H),   # y_end_map
+            torch.clamp(agent_pos[:, 1] - half, 0),          # x_start_map
+            torch.clamp(agent_pos[:, 1] + half + 1, max=W)    # x_end_map
+        ], dim=1)
+
+        # 预计算局部视图网格 [view_size, view_size]
+        yy, xx = torch.meshgrid(
+            torch.arange(view_size, device=device),
+            torch.arange(view_size, device=device),
+            indexing='ij'
+        )
+
+        # 批量填充数据
+        local_view = torch.zeros((batch_size, C, view_size, view_size), 
+                            device=device)
         
-        half_size = view_size // 2
-        y, x = agent_pos
-        
-        # 创建空的局部视图，初始填充0
-        local_view = torch.full((full_tensor.size(0), full_tensor.size(1), view_size, view_size), 0, 
-                            dtype=full_tensor.dtype, device=full_tensor.device)
-        
-        # 计算地图上的实际范围
-        y_start_map = max(0, y - half_size)
-        y_end_map = min(17, y + half_size + 1)
-        x_start_map = max(0, x - half_size)
-        x_end_map = min(17, x + half_size + 1)
-        
-        # 计算局部视图中的对应范围
-        y_start_local = half_size - (y - y_start_map)
-        y_end_local = half_size + (y_end_map - y)
-        x_start_local = half_size - (x - x_start_map)
-        x_end_local = half_size + (x_end_map - x)
-        
-        local_view[:, :, y_start_local:y_end_local, x_start_local:x_end_local] = full_tensor[:, :, y_start_map:y_end_map, x_start_map:x_end_map]
+        for b in range(batch_size):
+            y_start, y_end, x_start, x_end = ranges[b]
+            
+            # 计算有效区域掩码
+            valid_y = (yy >= half - (agent_pos[b,0] - y_start)) & \
+                    (yy < half + (y_end - agent_pos[b,0]))
+            valid_x = (xx >= half - (agent_pos[b,1] - x_start)) & \
+                    (xx < half + (x_end - agent_pos[b,1]))
+            valid_mask = valid_y & valid_x
+
+            # 向量化拷贝
+            local_view[b, :, valid_mask] = \
+                full_tensor[b, :, y_start:y_end, x_start:x_end].reshape(C, -1)
 
         return local_view
-
     
     def get_environment_tensor(self, full_tensor):
         # 提取第0、5、10通道
         # 去除位置编码信息
-        selected_indices = [0, 5, 10]  
-        mask = np.ones(full_tensor.shape[1], dtype=bool) 
-        mask[selected_indices] = False            
-        full_tensor = full_tensor[:, mask, :, :]
-        return full_tensor
+        channel_mask = torch.ones(full_tensor.size(1), dtype=torch.bool, device=full_tensor.device)
+        channel_mask[[0, 5, 10]] = False  # 屏蔽指定通道
+        
+        # 向量化切片
+        return full_tensor[:, channel_mask, :, :]
 
 
     def get_action_and_value(self, x, action=None):
@@ -296,7 +311,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"256_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"0820_2224_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -328,7 +343,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:1" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:3" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(

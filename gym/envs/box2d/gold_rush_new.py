@@ -383,10 +383,10 @@ class GoldRushNew(gym.Env):
         new_c = np.clip(c + moves[move][1], 0, 16)
 
         # 接近价值/步数最大的金币
-        old_target = self._distance_to_nearest_coin(r, c)
-        new_target = self._distance_to_nearest_coin(new_r, new_c)
-        if old_target and new_target and old_target[0] == new_target[0]:
-            rewards += (old_target[1] - new_target[1])
+        # old_target = self._distance_to_nearest_coin(r, c)
+        # new_target = self._distance_to_nearest_coin(new_r, new_c)
+        # if old_target and new_target and old_target[0] == new_target[0]:
+        #     rewards += (old_target[1] - new_target[1])
 
         # 乘上衰减率
         self.maze[4] *= (1 - self.decay_ratio)
@@ -481,7 +481,7 @@ class GoldRushNew(gym.Env):
         result_dist = 0
         
         for coin_pos in self.coins:
-            dist = abs(r - coin_pos[0]) + abs(c - coin_pos[1])  # 曼哈顿距离
+            dist = abs(r - coin_pos[0]) + abs(c - coin_pos[1]) + 1 # 曼哈顿距离
             coin = self.maze[1, coin_pos[0], coin_pos[1]]
             if ratio < coin / dist:
                 ratio = coin / dist
