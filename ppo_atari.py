@@ -257,20 +257,18 @@ class Agent(nn.Module):
                     (xx < half + (x_end - agent_pos[b,1]))
             valid_mask = valid_y & valid_x
 
-            # 向量化拷贝
             local_view[b, :, valid_mask] = \
                 full_tensor[b, :, y_start:y_end, x_start:x_end].reshape(C, -1)
 
         return local_view
     
     def get_environment_tensor(self, full_tensor):
-        # 提取第0、5、10通道
-        # 去除位置编码信息
-        channel_mask = torch.ones(full_tensor.size(1), dtype=torch.bool, device=full_tensor.device)
-        channel_mask[[0, 5, 10]] = False  # 屏蔽指定通道
+        if not hasattr(self, '_env_channel_mask'):
+            mask = torch.ones(full_tensor.size(1), dtype=torch.bool, device=full_tensor.device)
+            mask[[0, 5, 10]] = False
+            self._env_channel_mask = mask
         
-        # 向量化切片
-        return full_tensor[:, channel_mask, :, :]
+        return full_tensor[:, self._env_channel_mask, :, :]
 
 
     def get_action_and_value(self, x, action=None):
@@ -311,7 +309,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"0820_2224_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"0821_1032_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -517,7 +515,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        if global_step % 100000 == 0:
+        if global_step % 90000 == 0:
             checkpoint_path = model_dir / f"checkpoint_step{global_step}.pt"
             torch.save({
                 'model': agent.state_dict(),
