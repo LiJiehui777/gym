@@ -2,9 +2,11 @@ import copy
 import random
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-
+from torch.distributions.categorical import Categorical
 import numpy as np
 import pygame
+import torch
+import torch.nn as nn
 
 import gym
 from gym import spaces
@@ -45,6 +47,9 @@ mazes = {
         np.zeros((17, 17), dtype=np.float32),
         
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -80,6 +85,8 @@ mazes = {
         np.zeros((17, 17), dtype=np.float32),
         
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -115,6 +122,8 @@ mazes = {
         np.zeros((17, 17), dtype=np.float32),
         
         # Channel 4: Last move (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -142,6 +151,8 @@ mazes = {
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -169,6 +180,8 @@ mazes = {
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -196,6 +209,8 @@ mazes = {
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -223,6 +238,8 @@ mazes = {
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -250,7 +267,9 @@ mazes = {
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),
         # Channel 4: Visited_map (初始为空)
-        np.zeros((17, 17), dtype=np.float32) 
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
+        np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
     "maze9": np.stack([
@@ -277,6 +296,8 @@ mazes = {
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),
         # Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 
@@ -303,6 +324,64 @@ mazes = {
             [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         ], dtype=np.float32),
         np.zeros((17, 17), dtype=np.float32),# Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
+        np.zeros((17, 17), dtype=np.float32)
+    ], axis=0),
+
+    "match1": np.stack([
+        np.zeros((17, 17), dtype=np.float32),
+        np.zeros((17, 17), dtype=np.float32),
+        np.array([  # 星形对称障碍
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+            [0,0,0,1,0,1,1,1,1,1,1,1,0,1,0,0,0],
+            [0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0],
+            [0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0],
+            [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,1,0,1,1,1,0,0,0,1,1,1,0,1,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0],
+            [0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0],
+            [0,0,0,1,0,1,1,1,1,1,1,1,0,1,0,0,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+            [0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        ], dtype=np.float32),
+        np.zeros((17, 17), dtype=np.float32),# Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
+        np.zeros((17, 17), dtype=np.float32)
+    ], axis=0),
+
+    "match2": np.stack([
+        np.zeros((17, 17), dtype=np.float32),
+        np.zeros((17, 17), dtype=np.float32),
+        np.array([  # 星形对称障碍
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+            [0,0,0,1,0,1,1,1,1,1,1,1,0,1,0,0,0],
+            [0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,1,1,1,0,1,1,1,0,1,0,0,0],
+            [0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0],
+            [0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0],
+            [0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0],
+            [0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0],
+            [0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0],
+            [0,0,0,1,0,1,1,1,0,1,1,1,0,1,0,0,0],
+            [0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0],
+            [0,0,0,1,0,1,1,1,1,1,1,1,0,1,0,0,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        ], dtype=np.float32),
+        np.zeros((17, 17), dtype=np.float32),# Channel 4: Visited_map (初始为空)
+        np.zeros((17, 17), dtype=np.float32),
+        # Channel 5: opponent (初始为空)
         np.zeros((17, 17), dtype=np.float32)
     ], axis=0),
 }
@@ -406,7 +485,7 @@ class GoldRushNew(gym.Env):
         stack_frame: int = 3,
         max_rounds: int = 900,
         render_mode: str = "human",
-        has_player2: bool = False,
+        has_player2: bool = True,
     ):
         # 游戏会进行的最大回合数，因为这个环境每轮执行一个动作，因此应该设置成 900 个回合
         self.max_rounds = max_rounds + 1
@@ -473,6 +552,10 @@ class GoldRushNew(gym.Env):
         self.round = 1  # 当前是第几回合
         self.turn = 0  # 当前是哪个玩家，0: player1, 1: player2
 
+        self.opponent = Opponent(
+            "/home/lijiehui/project/gym_add_agent_location/gym/runs/0820_2224_switch_map_decay_GoldRushNew-v0__ppo_atari__1__1755699883/models/checkpoint_step6400000.pt"
+        )
+
         self.reset()
 
     def reset(
@@ -491,9 +574,8 @@ class GoldRushNew(gym.Env):
         self.turn = 0
         self.last_move = 4
         self.agent_positions = [(0, 0), (16, 16)]
-        self.last_positions = [(0, 0), (16, 16)]
-        # maze_choice = random.choice(["maze1", "maze2", "maze3"])
-        maze_choice = random.choice(["maze1", "maze2", "maze3", "maze4", "maze5", "maze6", "maze7", "maze8", "maze9", "maze10"])
+        maze_choice = random.choice(["maze1", "maze2", "match1", "match2"])
+        # maze_choice = random.choice(["maze1", "maze2", "maze3", "maze4", "maze5", "maze6", "maze7", "maze8", "maze9", "maze10"])
         npc_choice = random.choice(["maze1", "maze2"])
         self.maze = np.array(copy.deepcopy(mazes[maze_choice]))
         # self.maze[0][0] = -2
@@ -501,7 +583,7 @@ class GoldRushNew(gym.Env):
         self.maze[0, 0, 0] = 1  # palyer1
         self.maze[4, 0, 0] = 1
         if self.has_player2:
-            self.maze[1, 16, 16] = 1  # palyer2
+            self.maze[5, 16, 16] = 1  # palyer2
         self.npc_coin_pos = npc_coin_positions[npc_choice]
         self._flush_npc()
         self._flush_coins()
@@ -513,6 +595,9 @@ class GoldRushNew(gym.Env):
         self.historical_states = [obs for _ in range(self.stack_frame)]
         # obs_channel_agent = self._get_obs_frame_channel_agent()
         # self.historical_agent_states = [obs_channel_agent for _ in range(self.stack_frame)]
+
+        # 重置对手
+        self.opponent.historical_states = None
 
         if self.is_multi_frame:
             return self._get_obs(), {}
@@ -560,6 +645,7 @@ class GoldRushNew(gym.Env):
         reward_bomb = 0
         reward_obstacle = 0
         reward_step = -1  # 走一步就需要-1的惩罚
+        reward_final = 0
 
         done = False
         info = dict()  # gym 框架需要，暂时没用
@@ -591,40 +677,27 @@ class GoldRushNew(gym.Env):
             # 更新player走过的位置信息
             self.maze[4, new_r, new_c] = 1
 
-            # 如果新的位置是金币或者炸弹，该进行相应的处理
-            if self.has_player2:
-                if self.maze[2, new_r, new_c] > 0:  # 金币
-                    rewards = self.maze[2, new_r, new_c]
-                    self.maze[2, new_r, new_c] = 0
-                    self.coins.pop((new_r, new_c))
-                elif self.maze[4, new_r, new_c] == 1:  # 炸弹
-                    rewards = -int(self.golds[agent_id] * self.penalty)
-                    self.maze[4, new_r, new_c] = 0
-                    self.bombs.remove((new_r, new_c))
-            else:
-                if self.maze[1, new_r, new_c] > 0:  # 金币
-                    reward_coin = self.maze[1, new_r, new_c] / self.steps_to_eat_coin
-                    # rewards = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
-                    self.steps_to_eat_coin = 0
-                    self.golds[agent_id] += self.maze[1, new_r, new_c]
-                    self.maze[1, new_r, new_c] = 0
-                    self.coins.pop((new_r, new_c))
-                elif self.maze[3, new_r, new_c] == 1:  # 炸弹
-                    reward_bomb = -20
-                    r = -int(self.golds[agent_id] * self.penalty)
-                    # rewards = -20
-                    self.maze[3, new_r, new_c] = 0
-                    self.golds[agent_id] += r
-                    self.bombs.remove((new_r, new_c))
-                # else:
-                #     rewards = -1
+            if self.maze[1, new_r, new_c] > 0:  # 金币
+                reward_coin = self.maze[1, new_r, new_c] / self.steps_to_eat_coin
+                # rewards = self.maze[1, new_r, new_c] / math.sqrt(self.steps_to_eat_coin)
+                self.steps_to_eat_coin = 0
+                self.golds[agent_id] += self.maze[1, new_r, new_c]
+                self.maze[1, new_r, new_c] = 0
+                self.coins.pop((new_r, new_c))
+            elif self.maze[3, new_r, new_c] == 1:  # 炸弹
+                reward_bomb = -20
+                r = -int(self.golds[agent_id] * self.penalty)
+                # rewards = -20
+                self.maze[3, new_r, new_c] = 0
+                self.golds[agent_id] += r
+                self.bombs.remove((new_r, new_c))
+            # else:
+            #     rewards = -1
 
         else:
             self.maze[4, r, c] = 1
             reward_obstacle = -10
             # rewards = -5
-
-        rewards = reward_bomb + reward_coin + reward_obstacle + reward_step
         # nearest_coin_dist = self._distance_to_nearest_coin(agent_id)
         # if nearest_coin_dist < 3:
         #     rewards += (1 - nearest_coin_dist / 32)
@@ -632,11 +705,37 @@ class GoldRushNew(gym.Env):
         #     rewards += 0.2 * (1 - nearest_coin_dist / 32)
         # rewards += 0.5 * (1 - nearest_coin_dist)
 
+        # 对手回合
+        grid, _ = self.display_info(agent_id=0)
+        opponent_move = self.opponent.MoveDecision(grid, 0, 0)
+        opponent_r, opponent_c = self.agent_positions[1]
+        opponent_new_r = np.clip(opponent_r + moves[opponent_move][0], 0, 16)
+        opponent_new_c = np.clip(opponent_c + moves[opponent_move][1], 0, 16)
+
+        if self._is_position_valid(opponent_new_r, opponent_new_c):
+            # 清除旧位置
+            self.maze[5, opponent_r, opponent_c] = 0
+            # 设置新位置
+            self.maze[5, opponent_new_r, opponent_new_c] = 1
+            self.agent_positions[1] = (opponent_new_r, opponent_new_c)
+
+            # 如果新的位置是金币或者炸弹，该进行相应的处理
+            if self.maze[1, opponent_new_r, opponent_new_c] > 0:  # 金币
+                self.golds[1] += self.maze[1, opponent_new_r, opponent_new_c]
+                self.maze[1, opponent_new_r, opponent_new_c] = 0
+                self.coins.pop((opponent_new_r, opponent_new_c))
+            elif self.maze[3, opponent_new_r, opponent_new_c] == 1:  # 炸弹
+                self.maze[3, opponent_new_r, opponent_new_c] = 0
+                self.golds[1] += -int(self.golds[1] * self.penalty)
+                self.bombs.remove((opponent_new_r, opponent_new_c))
+
         if self.round == self.max_rounds:
             done = True
             print("coins: ", self.golds[agent_id])
-            # score, opponent_score = self.golds[agent_id], self.golds[1 - agent_id]
-            # rewards = 10000 if score > opponent_score else -10000
+            score, opponent_score = self.golds[agent_id], self.golds[1 - agent_id]
+            reward_final = 500 if score > opponent_score else -500
+
+        rewards = reward_bomb + reward_coin + reward_obstacle + reward_step + reward_final
 
         self.historical_states.append(self._get_obs_frame())
         self.historical_states.pop(0)
@@ -648,21 +747,40 @@ class GoldRushNew(gym.Env):
         else:
             return self._get_obs_frame(), rewards, done, False, info
         
+    # def display_info(self, agent_id: int):
+    #     maze_new = np.zeros((17, 17), dtype=np.float32)
+    #     for j in range(17):
+    #         for k in range(17):
+    #             if self.maze[1, j, k] >= 1:
+    #                 maze_new[j, k] = self.maze[1, j, k]
+    #             elif self.maze[2, j, k] == 1:
+    #                 maze_new[j, k] = -1
+    #             elif self.maze[3, j, k] == 1:
+    #                 maze_new[j, k] = -3
+    #             elif self.maze[5, j, k] == 1:
+    #                 maze_new[j, k] = -2
+
+    #     r, c = self.agent_positions[agent_id]
+    #     maze_new[r][c] = -9
+
+    #     return maze_new, copy.deepcopy(self.golds)
+
     def display_info(self, agent_id: int):
+        """向量化地图信息生成，优先级：金币 > 障碍物 > 炸弹 > 对手 > 智能体"""
+        # 初始化输出矩阵
         maze_new = np.zeros((17, 17), dtype=np.float32)
-        for j in range(17):
-            for k in range(17):
-                if self.maze[1, j, k] >= 1:
-                    maze_new[j, k] = self.maze[1, j, k]
-                elif self.maze[2, j, k] == 1:
-                    maze_new[j, k] = -1
-                elif self.maze[3, j, k] == 1:
-                    maze_new[j, k] = -3
-
+        
+        # 按优先级顺序填充（后赋值的会覆盖前值）
+        maze_new[self.maze[5] == 1] = -2   # 对手
+        maze_new[self.maze[3] == 1] = -3    # 炸弹
+        maze_new[self.maze[2] == 1] = -1    # 障碍物
+        np.copyto(maze_new, self.maze[1], where=self.maze[1] >= 1)  # 金币（保留原值）
+        
+        # 标记智能体位置（最高优先级）
         r, c = self.agent_positions[agent_id]
-        maze_new[r][c] = -9
-
-        return maze_new, copy.deepcopy(self.golds)
+        maze_new[r, c] = -9
+        
+        return maze_new, self.golds.copy() 
 
     def _distance_to_nearest_coin(self, r, c):
         r, c = r, c
@@ -679,89 +797,127 @@ class GoldRushNew(gym.Env):
         
         return [location, result_dist]
 
+    # def _get_obs_frame(self) -> np.ndarray:
+    #     obs = np.stack([
+    #         self.maze[0],  # agent
+    #         self.maze[1],  # coins
+    #         self.maze[2],  # obstacles
+    #         self.maze[3],  # bombs
+    #         self.maze[4],  # visited_map
+    #         self.maze[5],  # opponent
+    #     ], axis=0)
+    #     obs_min = obs.min() 
+    #     obs_max = obs.max() 
+    #     return (obs - obs_min) / (obs_max - obs_min + 1e-8)
+
     def _get_obs_frame(self) -> np.ndarray:
-        if self.has_player2:
-            obs = np.stack([
-                self.maze[0],  # agent
-                self.maze[1],  # opponent
-                self.maze[2],  # coins
-                self.maze[3],  # obstacles
-                self.maze[4],  # bombs
-                self.maze[5],
-            ], axis=0)
-            return obs
-        else:
-            obs = np.stack([
-                self.maze[0],
-                self.maze[1],  # coins
-                self.maze[2],  # obstacles
-                self.maze[3],  # bombs
-                self.maze[4],  # visited_map
-            ], axis=0)
-            obs_min = obs.min() 
-            obs_max = obs.max() 
-            return (obs - obs_min) / (obs_max - obs_min + 1e-8)
+        """优化版观察帧生成，避免重复计算和临时内存分配"""
+        # 预分配内存并直接堆叠（避免中间临时数组）
+        obs = np.empty((6, 17, 17), dtype=np.float32)
+        obs[0] = self.maze[0]  # agent
+        obs[1] = self.maze[1]  # coins
+        obs[2] = self.maze[2]  # obstacles
+        obs[3] = self.maze[3]  # bombs
+        obs[4] = self.maze[4]  # visited_map
+        obs[5] = self.maze[5]  # opponent
+        
+        # 向量化归一化（避免显式计算min/max）
+        obs_min = np.min(obs)
+        obs_range = np.max(obs) - obs_min + 1e-8
+        np.subtract(obs, obs_min, out=obs)  # 原地减法
+        np.divide(obs, obs_range, out=obs)   # 原地除法
+        
+        return obs
 
     def _get_obs(self) -> np.ndarray:
         return np.vstack(self.historical_states)
-
-    def global_minmax_normalize(obs):
-        """将整个obs张量归一化到[0,1]范围"""
-        obs_min = obs.min() 
-        obs_max = obs.max() 
-        return (obs - obs_min) / (obs_max - obs_min + 1e-8)
     
     def _is_position_valid(self, r: int, c: int) -> bool:
-        # 判断新的位置是否是非障碍物和玩家
-        if self.has_player2:
-            valid = (
-                self.maze[3, r, c] != 1
-                and self.maze[0, r, c] != 1 
-                and self.maze[1, r, c] != 1
-            )
+        maze = self.maze
+        is_obstacle = maze[2, r, c] == 1
+        has_player = maze[0, r, c] == 1
         
-        else:
-            valid = (
-                self.maze[2, r, c] != 1
-                and self.maze[0, r, c] != 1 
-            )
-        return valid
-
-    def _get_coins(self):
-        return self.golds[0]
+        return not (is_obstacle or has_player or maze[5, r, c] == 1)
 
 # 以下方法在有player2时需要更改
+    # def _flush_coins(self):
+    #     """
+    #     在每回合开始前更新地图中的金币
+    #     """
+    #     cnt = 0
+    #     num = random.randint(1, 3)
+    #     while cnt < num:
+    #         r, c = random.randint(4, 12), random.randint(4, 12)
+    #         if self._is_position_valid(r, c) and self.maze[3, r, c] == 0:
+    #             value = random.randint(3, 25)
+    #             self.maze[1, r, c] = value
+    #             self.coins.update({(r, c): value})
+    #             cnt += 1
+
     def _flush_coins(self):
-        """
-        在每回合开始前更新地图中的金币
-        """
-        cnt = 0
-        num = random.randint(1, 3)
-        while cnt < num:
-            r, c = random.randint(4, 12), random.randint(4, 12)
-            if self._is_position_valid(r, c) and self.maze[3, r, c] == 0:
-                value = random.randint(3, 25)
-                self.maze[1, r, c] = value
-                self.coins.update({(r, c): value})
-                cnt += 1
+        """向量化金币生成，避免随机尝试无效位置"""
+        # 预计算所有有效位置 (4-12行列，非障碍物/炸弹/玩家位置)
+        valid_positions = [
+            (r, c) for r in range(4, 13) 
+                for c in range(4, 13)
+                if (self._is_position_valid(r, c) and 
+                    self.maze[3, r, c] == 0)
+        ]
+        
+        # 随机选择位置（数量取1-3和有效位置数的较小值）
+        num = min(random.randint(1, 3), len(valid_positions))
+        selected = random.sample(valid_positions, num) if valid_positions else []
+        
+        # 批量设置金币
+        for r, c in selected:
+            value = random.randint(3, 25)
+            self.maze[1, r, c] = value
+            self.coins[(r, c)] = value
+
+    # def _flush_npc(self):
+    #     self.maze[1, :4, :] = 0
+    #     self.maze[1, 13:, :] = 0
+    #     self.maze[1, :, :4] = 0
+    #     self.maze[1, :, 13:] = 0
+    #     coins_to_delete = [
+    #         (i, j) for (i, j) in self.coins.keys() 
+    #             if i < 4 or i >= 13 or j < 4 or j >= 13  # 匹配相同的边界条件
+    #     ]
+    #     for coord in coins_to_delete:
+    #         del self.coins[coord]
+    #     maze_choice = random.choice(["maze1", "maze2"])
+    #     self.npc_coin_pos = npc_coin_positions[maze_choice]
+    #     for r, c in self.npc_coin_pos:
+    #         if self._is_position_valid(r, c):
+    #             self.maze[1, r, c] = 3
+    #             self.coins.update({(r, c): 3})
 
     def _flush_npc(self):
-        self.maze[1, :4, :] = 0
-        self.maze[1, 13:, :] = 0
-        self.maze[1, :, :4] = 0
-        self.maze[1, :, 13:] = 0
-        coins_to_delete = [
-            (i, j) for (i, j) in self.coins.keys() 
-                if i < 4 or i >= 13 or j < 4 or j >= 13  # 匹配相同的边界条件
-        ]
-        for coord in coins_to_delete:
-            del self.coins[coord]
+        """向量化清除边界金币+批量生成新金币"""
+        # 清除边界金币（向量化操作）
+        border_mask = np.zeros((17,17), dtype=bool)
+        border_mask[:4, :] = True      # 上边界
+        border_mask[13:, :] = True    # 下边界
+        border_mask[:, :4] = True     # 左边界
+        border_mask[:, 13:] = True    # 右边界
+        
+        # 一次性清除边界金币
+        self.maze[1, border_mask] = 0
+        
+        # 批量删除字典中的边界金币
+        self.coins = {
+            k: v for k, v in self.coins.items() 
+            if not (k[0] < 4 or k[0] >= 13 or k[1] < 4 or k[1] >= 13)
+        }
+        
+        # 批量生成新金币
         maze_choice = random.choice(["maze1", "maze2"])
-        self.npc_coin_pos = npc_coin_positions[maze_choice]
-        for r, c in self.npc_coin_pos:
-            if self._is_position_valid(r, c):
-                self.maze[1, r, c] = 3
-                self.coins.update({(r, c): 3})
+        new_coins = np.array(npc_coin_positions[maze_choice])
+        valid_mask = [self._is_position_valid(r, c) for r, c in new_coins]
+        
+        # 向量化赋值
+        self.maze[1, new_coins[valid_mask, 0], new_coins[valid_mask, 1]] = 3
+        self.coins.update({(r, c): 3 for r, c in new_coins[valid_mask]})
 
     def _flush_bomb(self):
         self.bombs.clear()
@@ -882,3 +1038,376 @@ class GoldRushNew(gym.Env):
             self.screen.blit(text_surface, (20, 20 + i * 40))
 
         pygame.display.flip()
+
+
+class PPOModelWrapper:
+    def __init__(self, model_path, device="auto"):
+        self.device = (
+            torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if device == "auto"
+            else device
+        )
+
+        self.model = self._load_model(model_path)
+
+    def _load_model(self, path):
+        checkpoint = torch.load(path, map_location=self.device)
+
+        class WrappedAgent(nn.Module):
+            def __init__(self):
+                super().__init__()
+                # Network部分（堆叠三帧）
+                self.network = nn.Sequential(
+                    # 第一层卷积：5×17×17 → 32×17×17（无padding）
+                    # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
+                    self.layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
+                    nn.ReLU(),
+                    # 第二层卷积：32×17×17 → 64×17×17（无padding）
+                    self.layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
+                    nn.ReLU(),
+                    # 第一次池化：64×17×17 → 64×8×8（2×2池化）
+                    nn.MaxPool2d(2, 2),
+                    # 第三层卷积：64×8×8 → 64×6×6（无padding）
+                    self.layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+                    nn.ReLU(),
+                    # 第二次池化（可选，进一步压缩尺寸）：64×6×6 → 64×3×3
+                    nn.MaxPool2d(2, 2),
+                    # 展平：64×3×3 = 576
+                    nn.Flatten(),
+                    # 修正线性层输入维度（576 → 512）
+                    self.layer_init(nn.Linear(64 * 3 * 3, 512)),
+                    nn.ReLU(),
+                )
+
+                self.partial_view = nn.Sequential(
+                    # 第一层卷积：12×7×7 → 32×7×7（无padding）
+                    # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
+                    self.layer_init(nn.Conv2d(12, 32, 3, stride=1, padding=1)),
+                    nn.ReLU(),
+                    # 第二层卷积：32×7×7 → 64×7×7（无padding）
+                    self.layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
+                    nn.ReLU(),
+                    # 第一次池化：64×7×7 → 64×3×3（2×2池化）
+                    nn.MaxPool2d(2, 2),
+                    # 展平：64×3×3 = 256
+                    nn.Flatten(),
+                    # 修正线性层输入维度（576 → 512）
+                    self.layer_init(nn.Linear(64 * 3 * 3, 512)),
+                    nn.ReLU(),
+                )
+
+                self.actor = nn.Sequential(
+                    self.layer_init(nn.Linear(512 * 2, 256)),
+                    nn.ReLU(),
+                    self.layer_init(nn.Linear(256, 128)),
+                    nn.ReLU(),
+                    self.layer_init(nn.Linear(128, 5), std=0.01)
+                )
+                self.critic = nn.Sequential(
+                    self.layer_init(nn.Linear(512 * 2, 256)),
+                    nn.ReLU(),
+                    self.layer_init(nn.Linear(256, 128 )),
+                    nn.ReLU(),
+                    self.layer_init(nn.Linear(128, 1), std=1)
+                )
+
+            def layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
+                torch.nn.init.orthogonal_(layer.weight, std)
+                torch.nn.init.constant_(layer.bias, bias_const)
+                return layer
+
+        model = WrappedAgent()
+        model.load_state_dict(checkpoint["model"])
+        model.to(self.device)
+        model.eval()
+        return model
+
+    def predict(self, x):
+        with torch.no_grad():
+            x = torch.FloatTensor(x).unsqueeze(0).to(self.device)
+            global_obs = self.get_environment_tensor(x)
+            partial_obs = self.get_environment_tensor(self.get_partial_view(x))
+            # global_obs = torch.FloatTensor(global_obs).unsqueeze(0).to(self.device)
+            # partial_obs = torch.FloatTensor(partial_obs).unsqueeze(0).to(self.device)
+            global_hidden = self.model.network(global_obs)
+            partial_hidden = self.model.partial_view(partial_obs)
+
+            hidden = torch.cat([global_hidden, partial_hidden], axis=1)
+            logits = self.model.actor(hidden)
+            probs = Categorical(logits=logits)
+            # best_action = probs.sample().item()
+            best_action = torch.argmax(probs.probs).item()
+            return best_action
+
+        
+    def _get_batch_positions(self, agent_channel):
+        flat_pos = torch.argmax(agent_channel.flatten(start_dim=1), dim=1)
+        return torch.stack([
+            flat_pos // agent_channel.size(2),  # y
+            flat_pos % agent_channel.size(2)     # x
+        ], dim=1)
+
+
+    def get_partial_view(self, full_tensor, view_size=7):
+        """终极优化版局部观察，完全向量化+边界安全"""
+        device = full_tensor.device
+        batch_size, C, H, W = full_tensor.shape
+        half = view_size // 2
+        
+        # 获取智能体位置 [batch_size, 2]
+        agent_pos = self._get_batch_positions(full_tensor[:, 12:13])  # 确保4D输入
+        
+        # 计算全局坐标 [batch_size, view_size, view_size, 2]
+        grid_y, grid_x = torch.meshgrid(
+            torch.arange(view_size, device=device) - half,
+            torch.arange(view_size, device=device) - half,
+            indexing='ij'
+        )
+        global_y = (agent_pos[:, 0, None, None] + grid_y).clamp(0, H-1).long()
+        global_x = (agent_pos[:, 1, None, None] + grid_x).clamp(0, W-1).long()
+        
+        # 批量收集数据 [batch_size, C, view_size, view_size]
+        local_view = full_tensor[
+            torch.arange(batch_size, device=device)[:, None, None, None],
+            torch.arange(C, device=device)[None, :, None, None],
+            global_y[:, None, :, :].expand(-1, C, -1, -1),
+            global_x[:, None, :, :].expand(-1, C, -1, -1)
+        ].squeeze(-1).squeeze(-1)  # 移除多余的维度
+        
+        return local_view
+
+    
+    # def get_partial_view(self, full_tensor, view_size=7):
+    #     device = full_tensor.device
+    #     batch_size, C, H, W = full_tensor.shape
+    #     half = view_size // 2
+
+    #     # 向量化获取所有智能体位置 [batch_size, 2]
+    #     agent_pos = self._get_batch_positions(full_tensor[:, 10])  # 假设第10通道是位置
+
+    #     # 计算地图上的范围 [batch_size, 4]
+    #     ranges = torch.stack([
+    #         torch.clamp(agent_pos[:, 0] - half, 0),          # y_start_map
+    #         torch.clamp(agent_pos[:, 0] + half + 1, max=H),   # y_end_map
+    #         torch.clamp(agent_pos[:, 1] - half, 0),          # x_start_map
+    #         torch.clamp(agent_pos[:, 1] + half + 1, max=W)    # x_end_map
+    #     ], dim=1)
+
+    #     # 预计算局部视图网格 [view_size, view_size]
+    #     yy, xx = torch.meshgrid(
+    #         torch.arange(view_size, device=device),
+    #         torch.arange(view_size, device=device),
+    #         indexing='ij'
+    #     )
+
+    #     # 批量填充数据
+    #     local_view = torch.zeros((batch_size, C, view_size, view_size), 
+    #                         device=device)
+        
+    #     for b in range(batch_size):
+    #         y_start, y_end, x_start, x_end = ranges[b]
+            
+    #         # 计算有效区域掩码
+    #         valid_y = (yy >= half - (agent_pos[b,0] - y_start)) & \
+    #                 (yy < half + (y_end - agent_pos[b,0]))
+    #         valid_x = (xx >= half - (agent_pos[b,1] - x_start)) & \
+    #                 (xx < half + (x_end - agent_pos[b,1]))
+    #         valid_mask = valid_y & valid_x
+
+    #         # 向量化拷贝
+    #         local_view[b, :, valid_mask] = \
+    #             full_tensor[b, :, y_start:y_end, x_start:x_end].reshape(C, -1)
+
+    #     return local_view
+
+    
+    def get_environment_tensor(self, full_tensor):
+        # 提取第0、5、10通道
+        # 去除位置编码信息
+        channel_mask = torch.ones(full_tensor.size(1), dtype=torch.bool, device=full_tensor.device)
+        channel_mask[[0, 5, 10]] = False  # 屏蔽指定通道
+        
+        # 向量化切片
+        return full_tensor[:, channel_mask, :, :]
+
+
+class Opponent:
+    def __init__(self, model_path=None):
+        self.gold1 = 0
+        self.gold2 = 0
+        self.model = None
+        self.last_location = None
+        self.stack_frames = 3   
+        self.round = 1
+        self.historical_states = None
+        if model_path:
+            self.model = PPOModelWrapper(model_path)
+
+    def MoveDecision(self, grid: List[List[int]], gold: int, gold_2: int) -> List[int]:
+        self.gold1 = gold
+        self.gold2 = gold_2
+
+        return self._model_predict(grid)
+
+    def _model_predict(self, grid):
+        observation, agent_pos= self._preprocess_grid(grid)
+
+        if self.historical_states == None:
+            processed_obs = self._normalize_observation(observation)
+            self.historical_states = [processed_obs for _ in range(self.stack_frames)]
+
+        current_obs = np.copy(observation)
+
+        # self.round += 1
+        # if self.round % 60 == 1:
+        #     processed_obs = self._normalize_observation(current_obs)
+        #     self.historical_states = [processed_obs for _ in range(3)]
+        # 模型预测最佳动作
+        best_action = self.model.predict(np.vstack(self.historical_states))
+
+        # 模拟环境状态变化
+        current_obs = self._simulate_action(current_obs, best_action, grid, agent_pos)
+        # if isinstance(current_obs, np.ndarray):
+        #     np.set_printoptions(threshold=np.inf)
+        #     print("next_obs shape:", current_obs.shape)
+        #     print(np.vstack(self.historical_states).shape)
+
+        # 预处理当前观察值
+        processed_obs = self._normalize_observation(current_obs)
+        self.historical_states.append(processed_obs)
+        self.historical_states.pop(0)
+
+        return best_action
+
+    # def _simulate_action(self, obs, action, grid, agent_pos):
+    #     # 智能体的位置
+    #     agent_r, agent_c = agent_pos
+
+    #     new_obs = np.copy(obs)
+    #     # 对手的位置
+    #     r, c = np.where(obs[0] == 1)
+    #     r, c = r.item(), c.item()
+    #     r_new, c_new = r, c
+    #     # 乘衰减率
+    #     new_obs[4] *= 0.5
+    #     if action == 0 and r > 0 and grid[r - 1][c] != -2 and new_obs[2, r - 1, c] != 1:
+    #         if agent_r != r - 1 and agent_c != c:
+    #             r_new, c_new = r - 1, c  # 上移
+    #     elif (
+    #         action == 1
+    #         and r < 16
+    #         and grid[r + 1][c] != -2
+    #         and new_obs[2, r + 1, c] != 1
+    #     ):  # 下移
+    #         if agent_r != r + 1 and agent_c != c:
+    #             r_new, c_new = r + 1, c
+    #     elif (
+    #         action == 2 and c > 0 and grid[r][c - 1] != -2 and new_obs[2, r, c - 1] != 1
+    #     ):  # 左移
+    #         if agent_r != r and agent_c != c - 1:
+    #             r_new, c_new = r, c - 1
+    #     elif (
+    #         action == 3
+    #         and c < 16
+    #         and grid[r][c + 1] != -2
+    #         and new_obs[2, r, c + 1] != 1
+    #     ):  # 右移
+    #         if agent_r != r and agent_c != c + 1:
+    #             r_new, c_new = r, c + 1
+
+    #     new_obs[0, r, c], new_obs[0, r_new, c_new] = 0, 1
+    #     new_obs[4, r_new, c_new] = 1
+
+    #     # 新位置是金币
+    #     if new_obs[1, r_new, c_new] >= 1:
+    #         new_obs[1, r_new, c_new] = 0
+    #     # 新位置是炸弹
+    #     elif new_obs[3, r_new, c_new] == 1:
+    #         new_obs[3, r_new, c_new] = 0
+
+    #     return new_obs
+
+    def _simulate_action(self, obs, action, grid, agent_pos):
+        # 转换为NumPy数组避免重复类型转换
+        grid_arr = np.asarray(grid, dtype=np.float32)
+        new_obs = obs.copy()  # 比np.copy更快
+        
+        # 获取对手当前位置
+        opponent_pos = np.argwhere(new_obs[0] == 1)[0]
+        r, c = opponent_pos
+        
+        # 预计算移动方向 [上, 下, 左, 右]
+        moves = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        dr, dc = moves[action]
+        
+        # 计算新位置
+        r_new, c_new = r + dr, c + dc
+        
+        # 边界检查 (0-16)
+        valid_move = (
+            0 <= r_new < 17 and 
+            0 <= c_new < 17 and
+            grid_arr[r_new, c_new] != -2 and  # 非对手碰撞
+            new_obs[2, r_new, c_new] != 1 and  # 非障碍物
+            (agent_pos[0] != r_new or agent_pos[1] != c_new)  # 非智能体位置
+        )
+        
+        # 更新位置和衰减
+        new_obs[4] *= 0.5  # 衰减率
+        if valid_move:
+            new_obs[0, r, c], new_obs[0, r_new, c_new] = 0, 1
+            new_obs[4, r_new, c_new] = 1
+            
+            # 处理金币/炸弹
+            if new_obs[1, r_new, c_new] >= 1:    # 金币
+                new_obs[1, r_new, c_new] = 0
+            elif new_obs[3, r_new, c_new] == 1:   # 炸弹
+                new_obs[3, r_new, c_new] = 0
+        
+        return new_obs
+
+    def _normalize_observation(self, obs):
+        obs_min = obs.min() 
+        obs_max = obs.max() 
+        return (obs - obs_min) / (obs_max - obs_min + 1e-8)
+
+    # def _preprocess_grid(self, grid):
+    #     # 原始输入格式：[5, 17, 17]的numpy数组
+    #     # Channel 0: Agent位置
+    #     # Channel 1: 金币
+    #     # Channel 2: 障碍物
+    #     # Channel 3: 炸弹
+    #     # Channel 4: 上一步动作
+
+    #     obs = np.zeros((5, 17, 17), dtype=np.float32)
+    #     agent_pos = None
+
+    #     for r in range(17):
+    #         for c in range(17):
+    #             val = grid[r][c]
+    #             if val == -2:  # 对手玩家自己
+    #                 obs[0, r, c] = 1
+    #             elif val == -9:  # 智能体
+    #                 agent_pos = (r, c)
+    #             elif val == -1:  # 障碍物
+    #                 obs[2, r, c] = 1
+    #             elif val == -3:  # 炸弹
+    #                 obs[3, r, c] = 1
+    #             elif val >= 1:  # 金币
+    #                 obs[1, r, c] = val
+
+    #     return obs, agent_pos
+
+    def _preprocess_grid(self, grid):
+        grid_arr = np.asarray(grid, dtype=np.float32)  # 避免复制已有数组
+        obs = np.zeros((5,17,17), dtype=np.float32)
+        
+        # 使用np.isin一次性处理多类别
+        obs[0] = np.isin(grid_arr, -2).astype(np.float32)      # 对手
+        obs[1] = np.maximum(grid_arr, 0)                       # 金币 (val >=1)
+        obs[2] = np.isin(grid_arr, [-1]).astype(np.float32)    # 障碍物
+        obs[3] = np.isin(grid_arr, [-3]).astype(np.float32)    # 炸弹
+        
+        # 快速定位智能体
+        agent_mask = np.isin(grid_arr, -9)
+        return obs, tuple(np.argwhere(agent_mask)[0]) if agent_mask.any() else None
