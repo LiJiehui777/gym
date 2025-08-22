@@ -530,6 +530,7 @@ class GoldRushNew(gym.Env):
         self.historical_states = []
         self.last_move = 4
         self.num_bombs = 20
+        self.num_npc_coins = 35
 
         # 两个玩家各自的位置， [player1, player2]
         self.agent_positions: List[Tuple[int, int]] = [(0, 0), (16, 16)]
@@ -547,13 +548,13 @@ class GoldRushNew(gym.Env):
         # 吃到炸弹后会损失的金币的比例，目前观测是 0.1，但是具体的值需要到初赛时才会公布。
         self.penalty = 0.1
 
-        self.decay_ratio = 0.1
+        self.decay_ratio = 0.5
 
         self.round = 1  # 当前是第几回合
         self.turn = 0  # 当前是哪个玩家，0: player1, 1: player2
 
         self.opponent = Opponent(
-            "/home/lijiehui/project/gym_add_agent_location/gym/runs/0820_2224_switch_map_decay_GoldRushNew-v0__ppo_atari__1__1755699883/models/checkpoint_step6400000.pt"
+            "/home/lijiehui/project/gym_add_agent_location/gym/runs/0820_2224_switch_map_decay_GoldRushNew-v0__ppo_atari__1__1755699883/models/checkpoint_step12800000.pt"
         )
 
         self.reset()
@@ -910,14 +911,32 @@ class GoldRushNew(gym.Env):
             if not (k[0] < 4 or k[0] >= 13 or k[1] < 4 or k[1] >= 13)
         }
         
-        # 批量生成新金币
-        maze_choice = random.choice(["maze1", "maze2"])
-        new_coins = np.array(npc_coin_positions[maze_choice])
-        valid_mask = [self._is_position_valid(r, c) for r, c in new_coins]
+        # # 批量生成新金币
+        # maze_choice = random.choice(["maze1", "maze2"])
+        # new_coins = np.array(npc_coin_positions[maze_choice])
+        # valid_mask = [self._is_position_valid(r, c) for r, c in new_coins]
         
-        # 向量化赋值
-        self.maze[1, new_coins[valid_mask, 0], new_coins[valid_mask, 1]] = 3
-        self.coins.update({(r, c): 3 for r, c in new_coins[valid_mask]})
+        # # 向量化赋值
+        # self.maze[1, new_coins[valid_mask, 0], new_coins[valid_mask, 1]] = 3
+        # self.coins.update({(r, c): 3 for r, c in new_coins[valid_mask]})
+
+        valid_positions = []
+        
+        # 收集所有有效位置
+        for i in range(17):
+            for j in range(17):
+                if (i < 4 or i >= 13 or j < 4 or j >= 13) and self._is_position_valid(i, j):
+                    valid_positions.append((i, j))
+
+        if len(valid_positions) >= self.num_npc_coins:
+            selected_positions = random.sample(valid_positions, self.num_npc_coins)
+        else:
+            selected_positions = valid_positions  
+
+        for (i, j) in selected_positions:
+            self.maze[1, i, j] = 3
+            self.coins[(i, j)] = 3# 生成新的30个金币（数值为3）
+        
 
     def _flush_bomb(self):
         self.bombs.clear()

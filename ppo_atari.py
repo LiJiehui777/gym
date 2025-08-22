@@ -52,7 +52,7 @@ class Args:
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-3
     """the learning rate of the optimizer"""
-    num_envs: int = 16
+    num_envs: int = 8
     """the number of parallel game environments"""
     num_steps: int = 256
     """the number of steps to run in each environment per policy rollout"""
@@ -353,7 +353,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"0821_1417_cuda3_two_agent_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"0822_1512_cuda1_partial_view11_two_agent_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:2" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
