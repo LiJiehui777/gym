@@ -124,7 +124,7 @@ class Agent(nn.Module):
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×17×17（无padding）
             # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
-            layer_init(nn.Conv2d(15, 32, 3, stride=1, padding=1)),
+            layer_init(nn.Conv2d(18, 32, 3, stride=1, padding=1)),
             nn.ReLU(),
             # 第二层卷积：32×17×17 → 64×17×17（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
@@ -143,185 +143,24 @@ class Agent(nn.Module):
             nn.ReLU(),
         )
 
-        self.partial_view = nn.Sequential(
-            # 第一层卷积：12×7×7 → 32×7×7（无padding）
-            # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
-            layer_init(nn.Conv2d(15, 32, 3, stride=1, padding=1)),
-            nn.ReLU(),
-            # 第二层卷积：32×7×7 → 64×7×7（无padding）
-            layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
-            nn.ReLU(),
-            # 第一次池化：64×7×7 → 64×3×3（2×2池化）
-            nn.MaxPool2d(2, 2),
-            # 展平：64×3×3 = 256
-            nn.Flatten(),
-            # 修正线性层输入维度（576 → 512）
-            layer_init(nn.Linear(64 * 3 * 3, 512)),
-            nn.ReLU(),
-        )
-
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(512 * 2, 256)),
+            layer_init(nn.Linear(512, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 128)),
             nn.ReLU(),
             layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         )
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(512 * 2, 256)),
+            layer_init(nn.Linear(512, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 128 )),
             nn.ReLU(),
             layer_init(nn.Linear(128, 1), std=1)
         )
-        # self.agent_location = nn.Sequential(
-        #     layer_init(nn.Linear(3 * 17 * 17, 128)),
-        #     nn.ReLU()
-        # )
-
-
-    def _get_batch_positions(self, agent_channel):
-        flat_pos = torch.argmax(agent_channel.flatten(start_dim=1), dim=1)
-        return torch.stack([
-            flat_pos // agent_channel.size(2),  # y
-            flat_pos % agent_channel.size(2)     # x
-        ], dim=1)
-
-    def get_partial_view(self, full_tensor, view_size=7):
-        """终极优化版局部观察，完全向量化+边界安全"""
-        device = full_tensor.device
-        batch_size, C, H, W = full_tensor.shape
-        half = view_size // 2
-        
-        # 获取智能体位置 [batch_size, 2]
-        agent_pos = self._get_batch_positions(full_tensor[:, 12:13])  # 确保4D输入
-        
-        # 计算全局坐标 [batch_size, view_size, view_size, 2]
-        grid_y, grid_x = torch.meshgrid(
-            torch.arange(view_size, device=device) - half,
-            torch.arange(view_size, device=device) - half,
-            indexing='ij'
-        )
-        global_y = (agent_pos[:, 0, None, None] + grid_y).clamp(0, H-1).long()
-        global_x = (agent_pos[:, 1, None, None] + grid_x).clamp(0, W-1).long()
-        
-        # 批量收集数据 [batch_size, C, view_size, view_size]
-        local_view = full_tensor[
-            torch.arange(batch_size, device=device)[:, None, None, None],
-            torch.arange(C, device=device)[None, :, None, None],
-            global_y[:, None, :, :].expand(-1, C, -1, -1),
-            global_x[:, None, :, :].expand(-1, C, -1, -1)
-        ].squeeze(-1).squeeze(-1)  # 移除多余的维度
-        
-        return local_view
-    
-    # def get_partial_view(self, full_tensor, view_size=7):
-    #     device = full_tensor.device
-    #     batch_size, C, H, W = full_tensor.shape
-    #     half = view_size // 2
-
-    #     # 向量化获取所有智能体位置 [batch_size, 2]
-    #     agent_pos = self._get_batch_positions(full_tensor[:, 12])
-
-    #     # 计算地图上的范围 [batch_size, 4]
-    #     ranges = torch.stack([
-    #         torch.clamp(agent_pos[:, 0] - half, 0),          # y_start_map
-    #         torch.clamp(agent_pos[:, 0] + half + 1, max=H),   # y_end_map
-    #         torch.clamp(agent_pos[:, 1] - half, 0),          # x_start_map
-    #         torch.clamp(agent_pos[:, 1] + half + 1, max=W)    # x_end_map
-    #     ], dim=1)
-
-    #     # 预计算局部视图网格 [view_size, view_size]
-    #     yy, xx = torch.meshgrid(
-    #         torch.arange(view_size, device=device),
-    #         torch.arange(view_size, device=device),
-    #         indexing='ij'
-    #     )
-
-    #     # 批量填充数据
-    #     local_view = torch.zeros((batch_size, C, view_size, view_size), 
-    #                         device=device)
-        
-    #     for b in range(batch_size):
-    #         y_start, y_end, x_start, x_end = ranges[b]
-            
-    #         # 计算有效区域掩码
-    #         valid_y = (yy >= half - (agent_pos[b,0] - y_start)) & \
-    #                 (yy < half + (y_end - agent_pos[b,0]))
-    #         valid_x = (xx >= half - (agent_pos[b,1] - x_start)) & \
-    #                 (xx < half + (x_end - agent_pos[b,1]))
-    #         valid_mask = valid_y & valid_x
-
-    #         local_view[b, :, valid_mask] = \
-    #             full_tensor[b, :, y_start:y_end, x_start:x_end].reshape(C, -1)
-
-    #     return local_view
-
-    # def get_partial_view(self, full_tensor, view_size=7):
-    #     device = full_tensor.device
-    #     batch_size, C, H, W = full_tensor.shape
-    #     half = view_size // 2
-        
-    #     # 获取所有智能体位置 [batch_size, 2]
-    #     agent_pos = self._get_batch_positions(full_tensor[:, 12])  # (y, x)坐标
-        
-    #     # 计算全局边界 [batch_size, 4]
-    #     y_start = torch.clamp(agent_pos[:, 0] - half, 0)
-    #     y_end = torch.clamp(agent_pos[:, 0] + half + 1, max=H)
-    #     x_start = torch.clamp(agent_pos[:, 1] - half, 0)
-    #     x_end = torch.clamp(agent_pos[:, 1] + half + 1, max=W)
-        
-    #     # 生成局部坐标网格 [view_size, view_size, 2]
-    #     grid_y, grid_x = torch.meshgrid(
-    #         torch.arange(view_size, device=device),
-    #         torch.arange(view_size, device=device),
-    #         indexing='ij'
-    #     )
-        
-    #     # 计算全局坐标 [batch_size, view_size, view_size, 2]
-    #     global_y = agent_pos[:, 0, None, None] + grid_y - half
-    #     global_x = agent_pos[:, 1, None, None] + grid_x - half
-        
-    #     # 生成有效掩码 [batch_size, view_size, view_size]
-    #     valid_mask = (
-    #         (global_y >= 0) & (global_y < H) & 
-    #         (global_x >= 0) & (global_x < W)
-    #     )
-        
-    #     # 填充数据 [batch_size, C, view_size, view_size]
-    #     local_view = torch.zeros((batch_size, C, view_size, view_size), device=device)
-        
-    #     # 向量化填充（关键优化）
-    #     for b in range(batch_size):
-    #         # 获取有效区域的全局坐标
-    #         valid_global_y = global_y[b][valid_mask[b]].long()
-    #         valid_global_x = global_x[b][valid_mask[b]].long()
-            
-    #         # 批量拷贝数据
-    #         local_view[b, :, valid_mask[b]] = full_tensor[
-    #             b, :, 
-    #             valid_global_y, valid_global_x
-    #         ].reshape(C, -1)
-        
-    #     return local_view
-    
-    def get_environment_tensor(self, full_tensor):
-        if not hasattr(self, '_env_channel_mask'):
-            mask = torch.ones(full_tensor.size(1), dtype=torch.bool, device=full_tensor.device)
-            mask[[0, 6, 12]] = False
-            self._env_channel_mask = mask
-        
-        return full_tensor[:, self._env_channel_mask, :, :]
 
 
     def get_action_and_value(self, x, action=None):
-        partial_view = self.get_partial_view(x)
-        global_obs = self.get_environment_tensor(x)
-        partial_obs = self.get_environment_tensor(partial_view)
-        global_hidden = self.network(global_obs)
-        partial_hidden = self.partial_view(partial_obs)
-
-        hidden = torch.cat([global_hidden, partial_hidden], axis=1)
+        hidden = self.network(x)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
@@ -330,13 +169,7 @@ class Agent(nn.Module):
 
 
     def get_value(self, x):
-        global_obs = self.get_environment_tensor(x)
-        partial_obs = self.get_environment_tensor(self.get_partial_view(x))
-        global_hidden = self.network(global_obs)
-        partial_hidden = self.partial_view(partial_obs)
-
-        hidden = torch.cat([global_hidden, partial_hidden], axis=1)
-        return self.critic(hidden)
+        return self.critic(self.network(x))
 
     # def get_action_and_value(self, x, action=None):
     #     hidden = self.network(x)
@@ -353,7 +186,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"0822_1512_cuda1_partial_view11_two_agent_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"0822_1611_cuda1_normal_cnn_two_agent_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")

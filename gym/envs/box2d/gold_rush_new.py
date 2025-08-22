@@ -734,7 +734,7 @@ class GoldRushNew(gym.Env):
             done = True
             print("coins: ", self.golds[agent_id])
             score, opponent_score = self.golds[agent_id], self.golds[1 - agent_id]
-            reward_final = 500 if score > opponent_score else -500
+            reward_final = 50 if score > opponent_score else -50
 
         rewards = reward_bomb + reward_coin + reward_obstacle + reward_step + reward_final
 
