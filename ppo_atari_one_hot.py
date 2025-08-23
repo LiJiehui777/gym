@@ -124,7 +124,7 @@ class Agent(nn.Module):
         self.network = nn.Sequential(
             # 第一层卷积：5×17×17 → 32×17×17（无padding）
             # layer_init(nn.Conv2d(12, 32, 3, stride=1)),
-            layer_init(nn.Conv2d(18, 32, 3, stride=1, padding=1)),
+            layer_init(nn.Conv2d(15, 32, 3, stride=1, padding=1)),
             nn.ReLU(),
             # 第二层卷积：32×17×17 → 64×17×17（无padding）
             layer_init(nn.Conv2d(32, 64, 3, stride=1, padding=1)),
@@ -139,28 +139,38 @@ class Agent(nn.Module):
             # 展平：64×3×3 = 576
             nn.Flatten(),
             # 修正线性层输入维度（576 → 512）
-            layer_init(nn.Linear(64 * 3 * 3, 512)),
+            layer_init(nn.Linear(64 * 3 * 3, 17 * 17)),
             nn.ReLU(),
         )
 
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(512, 256)),
+            layer_init(nn.Linear(17 * 17 * 4, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 128)),
             nn.ReLU(),
             layer_init(nn.Linear(128, envs.single_action_space.n), std=0.01)
         )
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(512, 256)),
+            layer_init(nn.Linear(17 * 17 * 4, 256)),
             nn.ReLU(),
             layer_init(nn.Linear(256, 128 )),
             nn.ReLU(),
             layer_init(nn.Linear(128, 1), std=1)
         )
 
-
+    
     def get_action_and_value(self, x, action=None):
+        # 提取第0、5、10通道
+        selected_indices = [0, 6, 12]
+        agent_obs = x[:, selected_indices, :, :].reshape(-1, 3 * 17 * 17)
+        mask = np.ones(x.shape[1], dtype=bool)  
+        mask[selected_indices] = False            
+        x = x[:, mask, :, :]
+
         hidden = self.network(x)
+        # hidden_agent_location = self.agent_location(agent_obs)
+        hidden_agent_location = agent_obs
+        hidden = torch.cat([hidden, hidden_agent_location], axis=1)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
@@ -169,7 +179,18 @@ class Agent(nn.Module):
 
 
     def get_value(self, x):
-        return self.critic(self.network(x))
+        selected_indices = [0, 6, 12]
+        agent_obs = x[:, selected_indices, :, :].reshape(-1, 3 * 17 * 17)
+        mask = np.ones(x.shape[1], dtype=bool)  
+        mask[selected_indices] = False            
+        x = x[:, mask, :, :]
+
+        hidden = self.network(x)
+        # hidden_agent_location = self.agent_location(agent_obs)
+        hidden_agent_location = agent_obs
+        hidden = torch.cat([hidden, hidden_agent_location], axis=1)
+        return self.critic(hidden)
+
 
     # def get_action_and_value(self, x, action=None):
     #     hidden = self.network(x)
@@ -180,13 +201,17 @@ class Agent(nn.Module):
     #     return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
 
 
+    # def get_value(self, x):
+    #     return self.critic(self.network(x))
+
+
 if __name__ == "__main__":
     # print(gym.__file__)
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)  # 128
     args.minibatch_size = int(args.batch_size // args.num_minibatches)  # 32
     args.num_iterations = args.total_timesteps // args.batch_size  # 78125
-    run_name = f"0823_0925_cuda1_normal_cnn_two_agent_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"0823_0928_cuda2_one_hot_two_agent_switch_map_decay_{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # 创建模型保存目录
     model_dir = Path(f"runs/{run_name}/models")
@@ -218,7 +243,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda:1" if torch.cuda.is_available() and args.cuda else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
