@@ -554,7 +554,7 @@ class GoldRushNew(gym.Env):
         self.turn = 0  # 当前是哪个玩家，0: player1, 1: player2
 
         self.opponent = Opponent(
-            "/home/lijiehui/project/gym_normal_cnn_two_agent/gym/runs/0822_1611_cuda1_normal_cnn_two_agent_switch_map_decay_GoldRushNew-v0__ppo_atari__1__1755850706/models/checkpoint_step16640000.pt"
+            "/home/lijiehui/project/gym_normal_cnn_two_agent/gym/runs/0823_0925_cuda1_normal_cnn_two_agent_switch_map_decay_GoldRushNew-v0__ppo_atari__1__1755912600/models/checkpoint_step37120000.pt"
         )
 
         self.reset()
@@ -598,7 +598,7 @@ class GoldRushNew(gym.Env):
         # self.historical_agent_states = [obs_channel_agent for _ in range(self.stack_frame)]
 
         # 重置对手
-        self.opponent.historical_states = None
+        self.opponent.reset()
 
         if self.is_multi_frame:
             return self._get_obs(), {}
@@ -645,7 +645,7 @@ class GoldRushNew(gym.Env):
         reward_coin = 0
         reward_bomb = 0
         reward_obstacle = 0
-        reward_step = -0.5  # 走一步就需要-1的惩罚
+        reward_step = 0  # 走一步就需要-1的惩罚
         reward_final = 0
 
         done = False
@@ -659,10 +659,10 @@ class GoldRushNew(gym.Env):
         new_c = np.clip(c + moves[move][1], 0, 16)
 
         # 接近价值/步数最大的金币
-        old_target = self._distance_to_nearest_coin(r, c)
-        new_target = self._distance_to_nearest_coin(new_r, new_c)
-        if old_target and new_target and old_target[0] == new_target[0]:
-            rewards += (old_target[1] - new_target[1])
+        # old_target = self._distance_to_nearest_coin(r, c)
+        # new_target = self._distance_to_nearest_coin(new_r, new_c)
+        # if old_target and new_target and old_target[0] == new_target[0]:
+        #     rewards += (old_target[1] - new_target[1])
 
         # 乘上衰减率
         self.maze[4] *= (1 - self.decay_ratio)
@@ -699,6 +699,11 @@ class GoldRushNew(gym.Env):
             self.maze[4, r, c] = 1
             reward_obstacle = -10
             # rewards = -5
+
+        rr, cc = self.agent_positions[agent_id]
+        if rr < 4 or rr >= 13 or cc < 4 or cc >= 13:
+            reward_step = -1
+
         # nearest_coin_dist = self._distance_to_nearest_coin(agent_id)
         # if nearest_coin_dist < 3:
         #     rewards += (1 - nearest_coin_dist / 32)
@@ -812,9 +817,11 @@ class GoldRushNew(gym.Env):
     #     return (obs - obs_min) / (obs_max - obs_min + 1e-8)
 
     def _get_obs_frame(self) -> np.ndarray:
-        """优化版观察帧生成，避免重复计算和临时内存分配"""
-        # 预分配内存并直接堆叠（避免中间临时数组）
         obs = np.empty((6, 17, 17), dtype=np.float32)
+        # obs = torch.empty((6, 17, 17), 
+        #                dtype=torch.float32,
+        #                device=device)
+        # obs_torch = torch.from_numpy(self.maze)
         obs[0] = self.maze[0]  # agent
         obs[1] = self.maze[1]  # coins
         obs[2] = self.maze[2]  # obstacles
@@ -822,11 +829,16 @@ class GoldRushNew(gym.Env):
         obs[4] = self.maze[4]  # visited_map
         obs[5] = self.maze[5]  # opponent
         
-        # 向量化归一化（避免显式计算min/max）
         obs_min = np.min(obs)
         obs_range = np.max(obs) - obs_min + 1e-8
         np.subtract(obs, obs_min, out=obs)  # 原地减法
         np.divide(obs, obs_range, out=obs)   # 原地除法
+        # mins = np.min(obs, axis=(1,2), keepdims=True)
+        # maxs = np.max(obs, axis=(1,2), keepdims=True)
+        # ranges = maxs - mins + 1e-8
+        
+        # # 分通道归一化
+        # return (obs - mins) / ranges
         
         return obs
 
@@ -1109,7 +1121,7 @@ class PPOModelWrapper:
                 self.critic = nn.Sequential(
                     self.layer_init(nn.Linear(512, 256)),
                     nn.ReLU(),
-                    self.layer_init(nn.Linear(256, 128 )),
+                    self.layer_init(nn.Linear(256, 128)),
                     nn.ReLU(),
                     self.layer_init(nn.Linear(128, 1), std=1)
                 )
@@ -1127,7 +1139,6 @@ class PPOModelWrapper:
 
     def predict(self, x):
         with torch.no_grad():
-            x = torch.FloatTensor(x).unsqueeze(0).to(self.device)
             hidden = self.model.network(x)
             logits = self.model.actor(hidden)
             probs = Categorical(logits=logits)
@@ -1137,7 +1148,7 @@ class PPOModelWrapper:
 
 
 class Opponent:
-    def __init__(self, model_path=None):
+    def __init__(self, model_path=None, device='cuda' if torch.cuda.is_available() else 'cpu'):
         self.gold1 = 0
         self.gold2 = 0
         self.model = None
@@ -1145,9 +1156,14 @@ class Opponent:
         self.stack_frames = 3   
         self.round = 1
         self.historical_states = None
-        self.visited_map = np.zeros((17, 17), dtype=np.float32)
+        self.visited_map = torch.zeros((17, 17), dtype=torch.float32, device=device)
+        self.device = device
         if model_path:
             self.model = PPOModelWrapper(model_path)
+
+    def reset(self):
+        self.historical_states = None
+        self.visited_map = torch.zeros((17, 17), dtype=torch.float32, device=self.device)
 
     def MoveDecision(self, grid: List[List[int]], gold: int, gold_2: int) -> List[int]:
         self.gold1 = gold
@@ -1159,18 +1175,14 @@ class Opponent:
         observation, agent_pos= self._preprocess_grid(grid)
 
         if self.historical_states == None:
-            observation[4] = self.visited_map
+            observation[4] = self.visited_map.clone()
             processed_obs = self._normalize_observation(observation)
             self.historical_states = [processed_obs for _ in range(self.stack_frames)]
 
-        current_obs = np.copy(observation)
-
-        # self.round += 1
-        # if self.round % 60 == 1:
-        #     processed_obs = self._normalize_observation(current_obs)
-        #     self.historical_states = [processed_obs for _ in range(3)]
+        current_obs = observation.clone()
         # 模型预测最佳动作
-        best_action = self.model.predict(np.vstack(self.historical_states))
+        stacked_states = torch.cat(self.historical_states, dim=0)
+        best_action = self.model.predict(stacked_states.unsqueeze(0))
 
         # 模拟环境状态变化
         current_obs = self._simulate_action(current_obs, best_action, grid, agent_pos)
@@ -1189,27 +1201,33 @@ class Opponent:
 
 
     def _simulate_action(self, obs, action, grid, agent_pos):
-        new_obs = np.copy(obs)
-        r, c = np.where(obs[0] == 1)  
+        new_obs = obs.clone()
+        r, c = torch.where(obs[0] == 1)
         r, c = r.item(), c.item()
         o_r, o_c = agent_pos
+        
         r_new, c_new = r, c
         self.visited_map *= 0.5
 
+        # 转换为张量操作
+        grid_tensor = torch.tensor(grid, device=self.device)
+        
         if action == 0 and r > 0 and grid[r - 1][c] != -2 and new_obs[2, r - 1, c] != 1:  
             if not (o_r == r - 1 and o_c == c):
-                r_new, c_new = r - 1, c      # 上移
-        elif action == 1 and r < 16 and grid[r + 1][c] != -2 and new_obs[2, r + 1, c] != 1:     # 下移
+                r_new, c_new = r - 1, c
+        elif action == 1 and r < 16 and grid[r + 1][c] != -2 and new_obs[2, r + 1, c] != 1:
             if not (o_r == r + 1 and o_c == c):
                 r_new, c_new = r + 1, c
-        elif action == 2 and c > 0 and grid[r][c - 1] != -2 and new_obs[2, r, c - 1] != 1:      # 左移
+        elif action == 2 and c > 0 and grid[r][c - 1] != -2 and new_obs[2, r, c - 1] != 1:
             if not (o_r == r and o_c == c - 1):
                 r_new, c_new = r, c - 1
-        elif action == 3 and c < 16 and grid[r][c + 1] != -2 and new_obs[2, r, c + 1] != 1:     # 右移
+        elif action == 3 and c < 16 and grid[r][c + 1] != -2 and new_obs[2, r, c + 1] != 1:
             if not (o_r == r and o_c == c + 1):
                 r_new, c_new = r, c + 1
 
-        new_obs[0, r, c], new_obs[0, r_new, c_new] = 0, 1
+        # 使用张量索引更新
+        new_obs[0, r, c] = 0
+        new_obs[0, r_new, c_new] = 1
         self.visited_map[r_new, c_new] = 1
 
         # 新位置是金币
@@ -1227,22 +1245,163 @@ class Opponent:
         return (obs - obs_min) / (obs_max - obs_min + 1e-8)
 
     def _preprocess_grid(self, grid):
-        obs = np.zeros((6, 17, 17), dtype=np.float32)
+        obs = torch.zeros((6, 17, 17), dtype=torch.float32, device=self.device)
         agent_pos = None
         
-        for r in range(17):
-            for c in range(17):
-                val = grid[r][c]
-                if val == -9:    # 玩家自己
-                    obs[5, r, c] = 1
-                    agent_pos = (r, c)
-                elif val == -2:   # 对手
-                    obs[0, r, c] = 1
-                elif val == -1:   # 障碍物
-                    obs[2, r, c] = 1
-                elif val == -3:   # 炸弹
-                    obs[3, r, c] = 1
-                elif val >= 1:    # 金币
-                    obs[1, r, c] = val
+        # 将grid转换为张量以便快速处理
+        grid_tensor = torch.tensor(grid, device=self.device)
+        
+        # 使用向量化操作
+        obs[5] = (grid_tensor == -9).float()  # 玩家自己
+        obs[0] = (grid_tensor == -2).float()   # 对手
+        obs[2] = (grid_tensor == -1).float()   # 障碍物
+        obs[3] = (grid_tensor == -3).float()   # 炸弹
+        
+        # 金币需要特殊处理（可能有不同数值）
+        gold_mask = grid_tensor >= 1
+        obs[1] = gold_mask.float() * grid_tensor.float()
+        
+        # 找到玩家位置
+        agent_positions = torch.where(grid_tensor == -9)
+        if len(agent_positions[0]) > 0:
+            agent_pos = (agent_positions[0].item(), agent_positions[1].item())
         
         return obs, agent_pos
+
+
+# class Opponent:
+#     def __init__(self, model_path=None, device='cuda' if torch.cuda.is_available() else 'cpu'):
+#         self.gold1 = 0
+#         self.gold2 = 0
+#         self.model = None  
+#         self.round = 1
+#         self.visited_map = torch.zeros((17, 17), dtype=torch.float32, device=device)
+#         self.device = device
+#         if model_path:
+#             self.model = PPOModelWrapper(model_path)
+#         self.stack_frames = 3
+#         self.num_channels = 6  # 假设每帧6通道
+        
+#         # 替换列表为预分配的CUDA张量
+#         self.history_buffer = torch.zeros(
+#             (self.stack_frames, self.num_channels, 17, 17),
+#             dtype=torch.float32,
+#             device=device
+#         )
+#         self.write_ptr = 0  # 环形缓冲区写入指针
+#         self.is_buffer_filled = False  # 标记缓冲区是否已填满
+
+#     def reset(self):
+#         self.history_buffer.zero_()
+#         self.write_ptr = 0
+#         self.is_buffer_filled = False
+
+#     def MoveDecision(self, grid: List[List[int]], gold: int, gold_2: int) -> List[int]:
+#         observation, agent_pos = self._preprocess_grid(grid)
+
+#         # 初始化历史状态
+#         if not self.is_buffer_filled:
+#             observation[4] = self.visited_map.clone()
+#             processed_obs = self._normalize_observation(observation)
+#             for i in range(self.stack_frames):
+#                 self.history_buffer[i] = processed_obs
+#             self.is_buffer_filled = True
+#             self.write_ptr = 0
+
+#         current_obs = observation.clone()
+        
+#         # 获取按时间顺序排列的帧（旧帧在前）
+#         ordered_frames = self._get_ordered_frames()  # [3,6,17,17]
+        
+#         # 拼接为模型输入格式
+#         stacked_states = ordered_frames.reshape(-1, 17, 17)  # [18,17,17]
+        
+#         # 模型预测
+#         best_action = self.model.predict(stacked_states.unsqueeze(0))
+
+#         # 更新历史状态（自动覆盖最旧帧）
+#         processed_obs = self._normalize_observation(current_obs)
+#         self.history_buffer[self.write_ptr] = processed_obs
+#         self.write_ptr = (self.write_ptr + 1) % self.stack_frames
+
+#         return best_action
+
+#     def _get_ordered_frames(self):
+#         """获取时序正确的帧（旧帧在前，新帧在后）"""
+#         if not self.is_buffer_filled:
+#             return self.history_buffer[:self.write_ptr]
+        
+#         # 使用roll实现高效环形缓冲区读取
+#         return torch.roll(
+#             self.history_buffer,
+#             shifts=-self.write_ptr,
+#             dims=0
+#         )
+
+#     def _simulate_action(self, obs, action, grid, agent_pos):
+#         new_obs = obs.clone()
+#         r, c = torch.where(obs[0] == 1)
+#         r, c = r.item(), c.item()
+#         o_r, o_c = agent_pos
+        
+#         r_new, c_new = r, c
+#         self.visited_map *= 0.5
+
+#         # 转换为张量操作
+#         grid_tensor = torch.tensor(grid, device=self.device)
+        
+#         if action == 0 and r > 0 and grid[r - 1][c] != -2 and new_obs[2, r - 1, c] != 1:  
+#             if not (o_r == r - 1 and o_c == c):
+#                 r_new, c_new = r - 1, c
+#         elif action == 1 and r < 16 and grid[r + 1][c] != -2 and new_obs[2, r + 1, c] != 1:
+#             if not (o_r == r + 1 and o_c == c):
+#                 r_new, c_new = r + 1, c
+#         elif action == 2 and c > 0 and grid[r][c - 1] != -2 and new_obs[2, r, c - 1] != 1:
+#             if not (o_r == r and o_c == c - 1):
+#                 r_new, c_new = r, c - 1
+#         elif action == 3 and c < 16 and grid[r][c + 1] != -2 and new_obs[2, r, c + 1] != 1:
+#             if not (o_r == r and o_c == c + 1):
+#                 r_new, c_new = r, c + 1
+
+#         # 使用张量索引更新
+#         new_obs[0, r, c] = 0
+#         new_obs[0, r_new, c_new] = 1
+#         self.visited_map[r_new, c_new] = 1
+
+#         # 新位置是金币
+#         if new_obs[1, r_new, c_new] >= 1:
+#             new_obs[1, r_new, c_new] = 0
+#         # 新位置是炸弹
+#         elif new_obs[3, r_new, c_new] == 1:
+#             new_obs[3, r_new, c_new] = 0
+
+#         return new_obs
+
+#     def _normalize_observation(self, obs):
+#         obs_min = obs.min() 
+#         obs_max = obs.max() 
+#         return (obs - obs_min) / (obs_max - obs_min + 1e-8)
+
+#     def _preprocess_grid(self, grid):
+#         obs = torch.zeros((6, 17, 17), dtype=torch.float32, device=self.device)
+#         agent_pos = None
+        
+#         # 将grid转换为张量以便快速处理
+#         grid_tensor = torch.tensor(grid, device=self.device)
+        
+#         # 使用向量化操作
+#         obs[5] = (grid_tensor == -9).float()  # 玩家自己
+#         obs[0] = (grid_tensor == -2).float()   # 对手
+#         obs[2] = (grid_tensor == -1).float()   # 障碍物
+#         obs[3] = (grid_tensor == -3).float()   # 炸弹
+        
+#         # 金币需要特殊处理（可能有不同数值）
+#         gold_mask = grid_tensor >= 1
+#         obs[1] = gold_mask.float() * grid_tensor.float()
+        
+#         # 找到玩家位置
+#         agent_positions = torch.where(grid_tensor == -9)
+#         if len(agent_positions[0]) > 0:
+#             agent_pos = (agent_positions[0].item(), agent_positions[1].item())
+        
+#         return obs, agent_pos
